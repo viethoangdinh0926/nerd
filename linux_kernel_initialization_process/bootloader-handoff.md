@@ -1,11 +1,5 @@
 # Bootloader Handoff
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Final step where the bootloader (e.g. GRUB bootloader) transfers control to the Linux kernel
 - Kernel image (`vmlinuz`) is already loaded into memory and ready to execute
@@ -16,12 +10,11 @@ systems
 - Control fully shifts from bootloader to kernel — bootloader is no longer involved
 - Kernel begins early initialization (setting up memory, paging, scheduler, devices)
 
-
 ---
 
 ## Relationships
 - performs -> [1] Kernel Loading
-- performs -> [2] Initramfs Loading
+- loads -> [2] Initramfs
 - performs -> [3] Boot Parameter Setup
 - performs -> [4] Minimal Environment Setup
 - performs -> [5] Control Transfer

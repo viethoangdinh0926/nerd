@@ -1,11 +1,5 @@
 # Driver Initialization
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Initializes kernel drivers responsible for controlling and interacting with hardware devices
 - Registers drivers with the kernel’s driver model so they can be associated with devices

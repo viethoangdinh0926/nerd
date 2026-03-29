@@ -1,11 +1,5 @@
 # Process Creation
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Establishes the first kernel processes that form the foundation of process management
 - Creates PID 0 (idle task) which runs when no other tasks are scheduled on a CPU

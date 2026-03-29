@@ -1,11 +1,5 @@
 # System Ready
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Represents the final state of the boot process where the system is fully operational
 - Confirms that the real root filesystem is mounted and in active use

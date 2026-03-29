@@ -1,11 +1,5 @@
 # rest_init()
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Represents the transition point where the kernel finishes initialization and starts normal task scheduling
 - Creates `kthreadd` (PID 2), the kernel thread responsible for managing and spawning other kernel threads

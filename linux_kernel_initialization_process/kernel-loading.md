@@ -1,11 +1,5 @@
 # Kernel Loading
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Handles expanding the compressed kernel image into its executable form in memory during early boot
 - Decompresses the kernel (e.g., from `vmlinuz`) into a usable in-memory image

@@ -1,11 +1,5 @@
 # Early Memory Setup
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Sets up initial memory management so the kernel can safely access and manage RAM during early boot
 - Uses temporary page tables created earlier to enable basic virtual memory translation

@@ -1,11 +1,5 @@
 # start_kernel()
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Serves as the main entry point of the Linux kernel after early architecture-specific setup
 - Orchestrates the overall kernel initialization process by invoking major subsystems in sequence

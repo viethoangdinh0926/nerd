@@ -1,11 +1,5 @@
 # Root Filesystem Strategy
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Determines how the system will obtain and mount its root filesystem during boot
 - Selects initramfs as a temporary or minimal root environment when needed

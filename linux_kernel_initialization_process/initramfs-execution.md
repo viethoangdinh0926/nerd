@@ -1,11 +1,5 @@
 # Initramfs Execution
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Executes the initramfs environment immediately after the kernel completes core initialization
 - Unpacks the initramfs archive into a temporary in-memory filesystem

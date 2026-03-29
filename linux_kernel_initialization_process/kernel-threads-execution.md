@@ -1,11 +1,5 @@
 # Kernel Threads Execution
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Represents execution of kernel-managed background threads after core initialization
 - Runs workqueue threads to process deferred and asynchronous kernel tasks

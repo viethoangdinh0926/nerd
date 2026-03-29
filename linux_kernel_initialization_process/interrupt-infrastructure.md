@@ -1,11 +1,5 @@
 # Interrupt Infrastructure
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Establishes the kernel’s interrupt handling infrastructure for responding to hardware and software events
 - Sets up the Interrupt Descriptor Table (IDT) to define how interrupts and exceptions are handled

@@ -197,13 +197,35 @@ def sanitize_graphml(graph: nx.DiGraph):
     return safe
 
 
+
 def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     cmap = build_children_map(graph)
     levels = compute_levels(graph, root)
 
+    level_buckets = {}
+    for node in graph.nodes:
+        level_buckets.setdefault(levels.get(node, 0), []).append(node)
+
+    for level_nodes in level_buckets.values():
+        level_nodes.sort(key=str.lower)
+
+    x_spacing = 260
+    y_spacing = 170
+
+    positions = {}
+    for level, level_nodes in sorted(level_buckets.items()):
+        count = len(level_nodes)
+        start_x = -((count - 1) * x_spacing) / 2
+        for idx, node in enumerate(level_nodes):
+            positions[node] = {
+                "x": start_x + idx * x_spacing,
+                "y": level * y_spacing,
+            }
+
     nodes = []
     for node, attrs in graph.nodes(data=True):
         summary_lines = attrs.get("summary_lines", []) or []
+        pos = positions.get(node, {"x": 0, "y": 0})
         nodes.append(
             {
                 "id": node,
@@ -213,6 +235,8 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
                 "summary_lines": summary_lines,
                 "in_degree": graph.in_degree(node),
                 "out_degree": graph.out_degree(node),
+                "x": pos["x"],
+                "y": pos["y"],
             }
         )
 
@@ -331,7 +355,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     <button onclick="expandAll()">Expand all</button>
     <button onclick="collapseAll()">Collapse all</button>
     <button onclick="fitGraph()">Fit</button>
-    <span class="hint">Click a node to expand/collapse it. Shift-click a node to show its details without toggling. The right panel text is selectable and copyable.</span>
+    <span class="hint">Drag nodes freely in any direction. Click a node to expand/collapse it. Shift-click a node to show its details without toggling.</span>
   </div>
 
   <div id="main">
@@ -361,17 +385,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       { nodes, edges },
       {
         layout: {
-          hierarchical: {
-            enabled: true,
-            direction: "UD",
-            sortMethod: "directed",
-            levelSeparation: 180,
-            nodeSpacing: 240,
-            treeSpacing: 220,
-            blockShifting: true,
-            edgeMinimization: true,
-            parentCentralization: true
-          }
+          improvedLayout: false
         },
         physics: false,
         interaction: {
@@ -393,7 +407,11 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
           arrows: {
             to: { enabled: true }
           },
-          smooth: false,
+          smooth: {
+            enabled: true,
+            type: "cubicBezier",
+            roundness: 0.2
+          },
           font: {
             size: 12,
             align: "middle"
@@ -404,6 +422,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
 
     const nodeMap = new Map(nodesData.map(n => [n.id, n]));
     const hidden = new Set();
+    let pointerMovedDuringDrag = false;
 
     function escapeHtml(text) {
       return String(text)
@@ -453,16 +472,18 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       }
     }
 
-    function relayout() {
+    function relayout(shouldFit = false) {
       network.setData({ nodes: nodes, edges: edges });
-      setTimeout(() => {
-        network.fit({
-          animation: {
-            duration: 250,
-            easingFunction: "easeInOutQuad"
-          }
-        });
-      }, 30);
+      if (shouldFit) {
+        setTimeout(() => {
+          network.fit({
+            animation: {
+              duration: 250,
+              easingFunction: "easeInOutQuad"
+            }
+          });
+        }, 30);
+      }
     }
 
     function showNode(id) {
@@ -501,7 +522,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
         }
       }
       syncEdges();
-      relayout();
+      relayout(false);
     }
 
     function expandOneLevel(id) {
@@ -511,7 +532,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
         showNode(child);
       }
       syncEdges();
-      relayout();
+      relayout(false);
     }
 
     function toggleNode(id) {
@@ -535,7 +556,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
         }
       }
       syncEdges();
-      relayout();
+      relayout(true);
       renderDetails(ROOT);
     }
 
@@ -545,7 +566,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
         showNode(node.id);
       }
       syncEdges();
-      relayout();
+      relayout(true);
     }
 
     function collapseAll() {
@@ -556,7 +577,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
         }
       }
       syncEdges();
-      relayout();
+      relayout(true);
     }
 
     function fitGraph() {
@@ -568,14 +589,57 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       });
     }
 
-    network.on("click", function(params) {
-      if (params.nodes.length === 1) {
-        const nodeId = params.nodes[0];
-        renderDetails(nodeId);
-        if (!(params.event && params.event.srcEvent && params.event.srcEvent.shiftKey)) {
-          toggleNode(nodeId);
+    network.on("dragStart", function() {
+      pointerMovedDuringDrag = false;
+    });
+
+    network.on("dragging", function() {
+      pointerMovedDuringDrag = true;
+    });
+
+    network.on("dragEnd", function(params) {
+      if (params.nodes && params.nodes.length) {
+        for (const nodeId of params.nodes) {
+          const pos = network.getPositions([nodeId])[nodeId];
+          const stored = nodeMap.get(nodeId);
+          if (stored && pos) {
+            stored.x = pos.x;
+            stored.y = pos.y;
+          }
         }
       }
+    });
+
+    network.on("release", function(params) {
+      const nodeId = params.pointer && params.pointer.DOM
+        ? network.getNodeAt(params.pointer.DOM)
+        : null;
+
+      if (!nodeId) {
+        pointerMovedDuringDrag = false;
+        return;
+      }
+
+      if (pointerMovedDuringDrag) {
+        pointerMovedDuringDrag = false;
+        return;
+      }
+
+      renderDetails(nodeId);
+
+      const shiftKey = !!(
+        params.event &&
+        (
+          (params.event.srcEvent && params.event.srcEvent.shiftKey) ||
+          params.event.shiftKey
+        )
+      );
+
+      if (!shiftKey) {
+        toggleNode(nodeId);
+      }
+
+      pointerMovedDuringDrag = false;
     });
 
     init();

@@ -1,11 +1,5 @@
 # Real Init System
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Represents the start of the real user-space init system after the kernel hands off control
 - Executes the main init program (e.g., `/sbin/init`) as PID 1

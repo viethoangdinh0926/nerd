@@ -1,11 +1,5 @@
 # Early User Space (/init)
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Represents the first user-space program (`/init`) executed from initramfs after the kernel finishes early initialization
 - Loads necessary kernel modules required for accessing hardware and storage devices

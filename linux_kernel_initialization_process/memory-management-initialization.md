@@ -1,11 +1,5 @@
 # Memory Management Initialization
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Initializes the kernel’s full memory management system after early boot setup
 - Discovers available physical memory using firmware-provided information (e.g., BIOS/UEFI memory map)

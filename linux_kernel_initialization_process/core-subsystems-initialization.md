@@ -1,11 +1,5 @@
 # Core Subsystems Initialization
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Initializes the kernel’s core subsystems that enable higher-level OS functionality after early boot
 - Sets up the Virtual File System (VFS) to provide a unified interface for all file systems
@@ -17,7 +11,6 @@ systems
 - Sets up RCU (Read-Copy-Update) for efficient synchronization in the kernel
 - Initializes workqueues to handle deferred and asynchronous kernel tasks
 - Marks the transition from low-level bootstrapping to a fully functional kernel environment ready for user-space processes
-
 
 ---
 

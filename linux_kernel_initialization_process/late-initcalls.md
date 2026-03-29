@@ -1,11 +1,5 @@
 # Late Initcalls
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Executes the final stage of kernel initialization functions (late initcalls) before transitioning to user space
 - Finalizes initialization of remaining kernel subsystems that depend on earlier setup

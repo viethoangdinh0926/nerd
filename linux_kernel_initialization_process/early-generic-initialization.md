@@ -1,11 +1,5 @@
 # Early Generic Initialization
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Performs foundational kernel setup immediately after early architecture-specific initialization
 - Parses boot parameters passed by the bootloader to configure kernel behavior

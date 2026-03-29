@@ -1,11 +1,5 @@
 # Linux Kernel Init
 
-## Type
-system
-
-## Domain
-systems
-
 ## Summary
 End-to-end flow of Linux kernel initialization from bootloader handoff to user space readiness.
 

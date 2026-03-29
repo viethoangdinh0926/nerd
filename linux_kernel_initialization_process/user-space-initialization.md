@@ -1,11 +1,5 @@
 # User Space Initialization
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Represents the initialization phase of user space after the kernel hands control to the init system
 - Mounts required filesystems (e.g., `/proc`, `/sys`, `/dev`, and other system mounts)

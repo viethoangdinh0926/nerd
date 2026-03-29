@@ -1,11 +1,5 @@
 # Early Kernel Entry
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Represents the very first execution phase of the kernel immediately after control is handed off by the bootloader
 - Sets up the CPU execution mode (typically transitioning into 64-bit long mode if not already done)

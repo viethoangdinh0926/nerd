@@ -1,11 +1,5 @@
 # Scheduler Initialization
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Initializes the kernel scheduler responsible for managing CPU time across tasks
 - Sets up runqueues for each CPU to track runnable tasks

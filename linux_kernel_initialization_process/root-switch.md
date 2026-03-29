@@ -1,11 +1,5 @@
 # Root Switch
 
-## Type
-concept
-
-## Domain
-systems
-
 ## Summary
 - Transitions the system from the temporary initramfs root filesystem to the real root filesystem
 - Uses mechanisms like `switch_root` or `pivot_root` to replace the current root mount
