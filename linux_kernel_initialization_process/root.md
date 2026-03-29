@@ -1,4 +1,4 @@
-# Linux Boot Process
+# Linux Kernel Init
 
 ## Type
 system
