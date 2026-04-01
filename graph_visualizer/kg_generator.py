@@ -354,8 +354,10 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
   <div id="toolbar">
     <button onclick="expandAll()">Expand all</button>
     <button onclick="collapseAll()">Collapse all</button>
+    <button onclick="setSelectedAsRoot()">Set selected as root</button>
+    <button onclick="restoreOriginalTree()">Restore original tree</button>
     <button onclick="fitGraph()">Fit</button>
-    <span class="hint">Drag nodes freely in any direction. Click a node to expand/collapse it. Shift-click a node to show its details without toggling.</span>
+    <span class="hint">Click a node to select it and expand/collapse it. Shift-click only shows details. Use “Set selected as root” to re-root the graph, and “Restore original tree” to go back.</span>
   </div>
 
   <div id="main">
@@ -370,11 +372,11 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
 
   <script>
     const ROOT = __ROOT__;
+    const ORIGINAL_ROOT = ROOT;
     const INIT_DEPTH = __DEPTH__;
     const nodesData = __NODES__;
     const edgesData = __EDGES__;
     const children = __CHILDREN__;
-    const levels = __LEVELS__;
 
     const nodes = new vis.DataSet();
     const edges = new vis.DataSet();
@@ -423,6 +425,10 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     const nodeMap = new Map(nodesData.map(n => [n.id, n]));
     const hidden = new Set();
     let pointerMovedDuringDrag = false;
+    let currentRoot = ORIGINAL_ROOT;
+    let selectedNodeId = ORIGINAL_ROOT;
+    let currentLevels = {};
+    let activeNodeIds = new Set();
 
     function escapeHtml(text) {
       return String(text)
@@ -454,9 +460,82 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       `;
     }
 
+    function subtreeNodesOf(id) {
+      const result = [id];
+      const stack = [id];
+      const seen = new Set([id]);
+
+      while (stack.length) {
+        const cur = stack.pop();
+        for (const child of (children[cur] || [])) {
+          if (seen.has(child)) continue;
+          seen.add(child);
+          result.push(child);
+          stack.push(child);
+        }
+      }
+
+      return result;
+    }
+
+    function computeLevelsForRoot(rootId) {
+      const levels = { [rootId]: 0 };
+      const queue = [rootId];
+
+      while (queue.length) {
+        const nodeId = queue.shift();
+        for (const child of (children[nodeId] || [])) {
+          if (!(child in levels)) {
+            levels[child] = levels[nodeId] + 1;
+            queue.push(child);
+          }
+        }
+      }
+
+      return levels;
+    }
+
+    function applyLayoutForRoot(rootId) {
+      currentLevels = computeLevelsForRoot(rootId);
+      activeNodeIds = new Set(subtreeNodesOf(rootId));
+
+      const levelBuckets = {};
+      for (const nodeId of activeNodeIds) {
+        const level = currentLevels[nodeId] || 0;
+        if (!levelBuckets[level]) {
+          levelBuckets[level] = [];
+        }
+        levelBuckets[level].push(nodeId);
+      }
+
+      for (const level of Object.keys(levelBuckets)) {
+        levelBuckets[level].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      }
+
+      const xSpacing = 260;
+      const ySpacing = 170;
+
+      for (const [levelText, levelNodes] of Object.entries(levelBuckets)) {
+        const level = Number(levelText);
+        const count = levelNodes.length;
+        const startX = -((count - 1) * xSpacing) / 2;
+        for (let idx = 0; idx < levelNodes.length; idx++) {
+          const nodeId = levelNodes[idx];
+          const stored = nodeMap.get(nodeId);
+          if (stored) {
+            stored.level = level;
+            stored.x = startX + idx * xSpacing;
+            stored.y = level * ySpacing;
+          }
+        }
+      }
+    }
+
     function syncEdges() {
       const visible = new Set(nodes.getIds());
-      const wanted = edgesData.filter(e => visible.has(e.from) && visible.has(e.to));
+      const wanted = edgesData.filter(
+        e => activeNodeIds.has(e.from) && activeNodeIds.has(e.to) && visible.has(e.from) && visible.has(e.to)
+      );
       const wantedIds = new Set(wanted.map(e => e.id));
 
       for (const id of edges.getIds()) {
@@ -487,6 +566,9 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     }
 
     function showNode(id) {
+      if (!activeNodeIds.has(id)) {
+        return;
+      }
       if (!nodes.get(id)) {
         const node = nodeMap.get(id);
         if (node) {
@@ -502,7 +584,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
 
       while (stack.length) {
         const cur = stack.pop();
-        if (seen.has(cur)) continue;
+        if (seen.has(cur) || !activeNodeIds.has(cur)) continue;
         seen.add(cur);
         result.push(cur);
         for (const child of (children[cur] || [])) {
@@ -526,7 +608,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     }
 
     function expandOneLevel(id) {
-      const directChildren = children[id] || [];
+      const directChildren = (children[id] || []).filter(child => activeNodeIds.has(child));
       for (const child of directChildren) {
         hidden.delete(child);
         showNode(child);
@@ -536,7 +618,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     }
 
     function toggleNode(id) {
-      const directChildren = children[id] || [];
+      const directChildren = (children[id] || []).filter(child => activeNodeIds.has(child));
       if (!directChildren.length) return;
 
       const hasVisibleChild = directChildren.some(child => nodes.get(child));
@@ -547,23 +629,31 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       }
     }
 
-    function init() {
-      for (const node of nodesData) {
-        if ((levels[node.id] || 0) <= INIT_DEPTH) {
-          nodes.add(node);
+    function initFromRoot(rootId) {
+      currentRoot = rootId;
+      selectedNodeId = rootId;
+      hidden.clear();
+      nodes.clear();
+      edges.clear();
+      applyLayoutForRoot(rootId);
+
+      for (const nodeId of activeNodeIds) {
+        if ((currentLevels[nodeId] || 0) <= INIT_DEPTH) {
+          showNode(nodeId);
         } else {
-          hidden.add(node.id);
+          hidden.add(nodeId);
         }
       }
+
       syncEdges();
       relayout(true);
-      renderDetails(ROOT);
+      renderDetails(rootId);
     }
 
     function expandAll() {
       hidden.clear();
-      for (const node of nodesData) {
-        showNode(node.id);
+      for (const nodeId of activeNodeIds) {
+        showNode(nodeId);
       }
       syncEdges();
       relayout(true);
@@ -571,13 +661,24 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
 
     function collapseAll() {
       for (const id of [...nodes.getIds()]) {
-        if (id !== ROOT) {
+        if (id !== currentRoot) {
           nodes.remove(id);
           hidden.add(id);
         }
       }
       syncEdges();
       relayout(true);
+    }
+
+    function setSelectedAsRoot() {
+      if (!selectedNodeId || !nodeMap.has(selectedNodeId)) {
+        return;
+      }
+      initFromRoot(selectedNodeId);
+    }
+
+    function restoreOriginalTree() {
+      initFromRoot(ORIGINAL_ROOT);
     }
 
     function fitGraph() {
@@ -625,6 +726,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
         return;
       }
 
+      selectedNodeId = nodeId;
       renderDetails(nodeId);
 
       const shiftKey = !!(
@@ -642,7 +744,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       pointerMovedDuringDrag = false;
     });
 
-    init();
+    initFromRoot(ORIGINAL_ROOT);
   </script>
 </body>
 </html>"""
