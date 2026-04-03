@@ -479,7 +479,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     <button onclick="setSelectedAsRoot()">Set selected as root</button>
     <button onclick="restoreOriginalTree()">Restore original tree</button>
     <button onclick="fitGraph()">Fit</button>
-    <span class="hint">Click a node to select it and expand/collapse it. Shift-click only shows details. Use “Set selected as root” to re-root the graph, and “Restore original tree” to go back.</span>
+    <span class="hint">Click a node to select it and expand/collapse it. The visible graph auto-reorganizes after each click for a clearer layout while keeping children below parents and sibling edge order left-to-right. Shift-click only shows details.</span>
   </div>
 
   <div id="main">
@@ -814,6 +814,108 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       return result;
     }
 
+    function visibleChildrenOf(id) {
+      return (children[id] || []).filter(child => activeNodeIds.has(child) && nodes.get(child));
+    }
+
+    function buildVisibleSubtreeInfo(rootId) {
+      const subtreeWidth = {};
+      const visibleSet = new Set(nodes.getIds());
+
+      function visit(nodeId) {
+        if (!visibleSet.has(nodeId)) {
+          return 0;
+        }
+
+        const visibleKids = visibleChildrenOf(nodeId);
+        if (!visibleKids.length) {
+          subtreeWidth[nodeId] = 1;
+          return 1;
+        }
+
+        let total = 0;
+        for (const child of visibleKids) {
+          total += visit(child);
+        }
+        subtreeWidth[nodeId] = Math.max(1, total);
+        return subtreeWidth[nodeId];
+      }
+
+      visit(rootId);
+      return { subtreeWidth, visibleSet };
+    }
+
+    function computeVisibleLayout(rootId) {
+      const { subtreeWidth, visibleSet } = buildVisibleSubtreeInfo(rootId);
+      const positions = {};
+      const xSpacing = 260;
+      const ySpacing = 170;
+
+      function place(nodeId, leftUnits) {
+        if (!visibleSet.has(nodeId)) return;
+
+        const widthUnits = subtreeWidth[nodeId] || 1;
+        const centerUnits = leftUnits + (widthUnits - 1) / 2;
+        positions[nodeId] = {
+          x: centerUnits * xSpacing,
+          y: (currentLevels[nodeId] || 0) * ySpacing,
+        };
+
+        let cursor = leftUnits;
+        for (const child of visibleChildrenOf(nodeId)) {
+          const childWidth = subtreeWidth[child] || 1;
+          place(child, cursor);
+          cursor += childWidth;
+        }
+      }
+
+      place(rootId, 0);
+
+      const visibleNodes = Array.from(visibleSet);
+      const xs = visibleNodes
+        .filter(id => positions[id])
+        .map(id => positions[id].x);
+
+      const minX = xs.length ? Math.min(...xs) : 0;
+      const maxX = xs.length ? Math.max(...xs) : 0;
+      const offsetX = -((minX + maxX) / 2);
+
+      for (const nodeId of visibleNodes) {
+        const stored = nodeMap.get(nodeId);
+        const pos = positions[nodeId];
+        if (!stored || !pos) continue;
+        stored.x = pos.x + offsetX;
+        stored.y = pos.y;
+        stored.level = currentLevels[nodeId] || 0;
+      }
+    }
+
+    function reorganizeVisibleGraph(shouldFit = false) {
+      computeVisibleLayout(currentRoot);
+
+      const updates = nodes.getIds().map(id => {
+        const stored = nodeMap.get(id);
+        return stored ? { id, x: stored.x, y: stored.y, level: stored.level } : null;
+      }).filter(Boolean);
+
+      if (updates.length) {
+        nodes.update(updates);
+      }
+
+      network.setData({ nodes: nodes, edges: edges });
+
+      if (shouldFit) {
+        setTimeout(() => {
+          network.fit({
+            animation: {
+              duration: 250,
+              easingFunction: "easeInOutQuad"
+            }
+          });
+        }, 30);
+      }
+    }
+
     function computeLevelsForRoot(rootId) {
       const levels = { [rootId]: 0 };
       const queue = [rootId];
@@ -835,75 +937,12 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       currentLevels = computeLevelsForRoot(rootId);
       activeNodeIds = new Set(subtreeNodesOf(rootId));
 
-      const xSpacing = 260;
-      const ySpacing = 170;
-      const nextXByLevel = {};
-      const placed = new Set();
-
-      function placeNode(nodeId) {
-        if (!activeNodeIds.has(nodeId) || placed.has(nodeId)) {
-          return;
-        }
-
-        const level = currentLevels[nodeId] || 0;
-        if (!(level in nextXByLevel)) {
-          nextXByLevel[level] = 0;
-        }
-
+      for (const nodeId of activeNodeIds) {
         const stored = nodeMap.get(nodeId);
         if (stored) {
-          stored.level = level;
-          stored.x = nextXByLevel[level] * xSpacing;
-          stored.y = level * ySpacing;
-        }
-        nextXByLevel[level] += 1;
-        placed.add(nodeId);
-
-        const orderedKids = (children[nodeId] || []).filter(child => activeNodeIds.has(child));
-        for (const child of orderedKids) {
-          placeNode(child);
-        }
-      }
-
-      placeNode(rootId);
-
-      const remaining = [...activeNodeIds].filter(nodeId => !placed.has(nodeId));
-      remaining.sort((a, b) => {
-        const levelDiff = (currentLevels[a] || 0) - (currentLevels[b] || 0);
-        if (levelDiff !== 0) return levelDiff;
-        return a.localeCompare(b, undefined, { sensitivity: "base" });
-      });
-
-      for (const nodeId of remaining) {
-        placeNode(nodeId);
-      }
-
-      const levelBuckets = {};
-      for (const nodeId of activeNodeIds) {
-        const level = currentLevels[nodeId] || 0;
-        if (!levelBuckets[level]) {
-          levelBuckets[level] = [];
-        }
-        levelBuckets[level].push(nodeId);
-      }
-
-      for (const levelText of Object.keys(levelBuckets)) {
-        const level = Number(levelText);
-        const levelNodes = levelBuckets[level];
-        levelNodes.sort((a, b) => {
-          const ax = (nodeMap.get(a) || {}).x || 0;
-          const bx = (nodeMap.get(b) || {}).x || 0;
-          return ax - bx;
-        });
-        const count = levelNodes.length;
-        const startX = -((count - 1) * xSpacing) / 2;
-        for (let idx = 0; idx < levelNodes.length; idx++) {
-          const nodeId = levelNodes[idx];
-          const stored = nodeMap.get(nodeId);
-          if (stored) {
-            stored.x = startX + idx * xSpacing;
-            stored.y = level * ySpacing;
-          }
+          stored.level = currentLevels[nodeId] || 0;
+          stored.x = 0;
+          stored.y = stored.level * 170;
         }
       }
     }
@@ -929,17 +968,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     }
 
     function relayout(shouldFit = false) {
-      network.setData({ nodes: nodes, edges: edges });
-      if (shouldFit) {
-        setTimeout(() => {
-          network.fit({
-            animation: {
-              duration: 250,
-              easingFunction: "easeInOutQuad"
-            }
-          });
-        }, 30);
-      }
+      reorganizeVisibleGraph(shouldFit);
     }
 
     function showNode(id) {
@@ -1055,8 +1084,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     }
 
     function restoreOriginalTree() {
-      installSplitter();
-    initFromRoot(ORIGINAL_ROOT);
+      initFromRoot(ORIGINAL_ROOT);
     }
 
     function fitGraph() {
@@ -1148,6 +1176,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
         toggleNode(nodeId);
       }
 
+      relayout(false);
       pointerMovedDuringDrag = false;
     });
 
