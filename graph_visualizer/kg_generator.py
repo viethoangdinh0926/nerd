@@ -296,8 +296,12 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
                 "from": u,
                 "to": v,
                 "label": label,
+                "full_label": label,
                 "title": f"{u} → {v}<br>relation: {d.get('relation', '')}"
                 + (f"<br>order: {order}" if order != -1 else ""),
+                "base_color": "#848484",
+                "incoming_color": "#2563eb",
+                "outgoing_color": "#dc2626",
             }
         )
 
@@ -393,6 +397,10 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     }
     #details .summary-markdown {
       line-height: 1.5;
+      background: #000;
+      color: #fff;
+      padding: 12px;
+      border-radius: 8px;
     }
     #details .summary-markdown > :first-child {
       margin-top: 0;
@@ -427,11 +435,13 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       padding: 12px;
       border-radius: 8px;
       background: #f3f3f3;
+      color: #000;
       white-space: pre-wrap;
       tab-size: 4;
     }
     #details .summary-markdown code {
       background: #f3f3f3;
+      color: #000;
       padding: 1px 4px;
       border-radius: 4px;
       white-space: pre-wrap;
@@ -451,6 +461,26 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       border: none;
       border-top: 1px solid #ddd;
       margin: 16px 0;
+    }
+    #details .summary-markdown table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-bottom: 12px;
+      display: table;
+    }
+    #details .summary-markdown th,
+    #details .summary-markdown td {
+      border: 1px solid #ddd;
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    #details .summary-markdown th {
+      background: #f5f5f5;
+      font-weight: 600;
+    }
+    #details .summary-markdown tr:nth-child(even) {
+      background: #fafafa;
     }
     #details .empty {
       color: #666;
@@ -484,7 +514,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     <button onclick="setSelectedAsRoot()">Set selected as root</button>
     <button onclick="restoreOriginalTree()">Restore original tree</button>
     <button onclick="fitGraph()">Fit</button>
-    <span class="hint">Click a node to select it and expand/collapse it. Node labels are shortened by default, and the selected node shows its full name. The graph auto-reorganizes after each click for a clearer layout while keeping children below parents and sibling edge order left-to-right. Shift-click only shows details.</span>
+    <span class="hint">Click a node to select it and expand/collapse it. The clicked node is highlighted, incoming and outgoing edges use different colors, node labels are shortened by default, and the selected node shows its full name. The graph auto-reorganizes after each click for a clearer layout while keeping children below parents and sibling edge order left-to-right. Shift-click only shows details.</span>
   </div>
 
   <div id="main">
@@ -530,6 +560,8 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
         nodes: {
           shape: "dot",
           size: 18,
+          borderWidth: 2,
+          borderWidthSelected: 4,
           widthConstraint: {
             maximum: 190
           },
@@ -539,6 +571,18 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
             bottom: 10,
             left: 10
           },
+          color: {
+            border: "#666666",
+            background: "#ffffff",
+            highlight: {
+              border: "#f59e0b",
+              background: "#fff7ed"
+            },
+            hover: {
+              border: "#f59e0b",
+              background: "#fff7ed"
+            }
+          },
           font: {
             size: 18,
             multi: false
@@ -547,6 +591,12 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
         edges: {
           arrows: {
             to: { enabled: true }
+          },
+          color: {
+            color: "#848484",
+            highlight: "#848484",
+            hover: "#848484",
+            inherit: false
           },
           smooth: {
             enabled: true,
@@ -582,6 +632,41 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
 
       if (updates.length) {
         nodes.update(updates);
+      }
+    }
+
+    function refreshEdgeHighlights() {
+      const updates = edges.getIds().map(id => {
+        const edge = edges.get(id);
+        if (!edge) return null;
+
+        let color = edge.base_color || "#848484";
+        let width = 1.5;
+
+        if (selectedNodeId) {
+          if (edge.from === selectedNodeId) {
+            color = edge.outgoing_color || "#dc2626";
+            width = 3;
+          } else if (edge.to === selectedNodeId) {
+            color = edge.incoming_color || "#2563eb";
+            width = 3;
+          }
+        }
+
+        return {
+          id,
+          color: {
+            color: color,
+            highlight: color,
+            hover: color,
+            inherit: false,
+          },
+          width: width,
+        };
+      }).filter(Boolean);
+
+      if (updates.length) {
+        edges.update(updates);
       }
     }
 
@@ -654,6 +739,23 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       let quoteLines = [];
       let paragraphLines = [];
       const listStack = [];
+
+      function isTableRow(line) {
+        return /^\s*\|.*\|\s*$/.test(line);
+      }
+
+      function isTableSeparator(line) {
+        return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+      }
+
+      function splitTableRow(line) {
+        return line
+          .trim()
+          .replace(/^\|/, "")
+          .replace(/\|$/, "")
+          .split("|")
+          .map(cell => cell.trim());
+      }
 
       function closeListsToDepth(targetDepth = 0) {
         while (listStack.length > targetDepth) {
@@ -739,7 +841,8 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
         flushBlockquote();
       }
 
-      for (const rawLine of lines) {
+      for (let i = 0; i < lines.length; i++) {
+        const rawLine = lines[i];
         const line = rawLine ?? "";
         const trimmed = line.trim();
 
@@ -767,7 +870,42 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
 
         if (/^\s*(?:---|\*\*\*|___)\s*$/.test(line)) {
           flushNonListBlocks();
+          closeListsToDepth(0);
           out.push("<hr>");
+          continue;
+        }
+
+        if (isTableRow(line) && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+          flushNonListBlocks();
+          closeListsToDepth(0);
+
+          const headers = splitTableRow(line);
+          const rows = [];
+          i += 2;
+
+          while (i < lines.length && isTableRow(lines[i])) {
+            rows.push(splitTableRow(lines[i]));
+            i++;
+          }
+          i--;
+
+          let tableHtml = "<table><thead><tr>";
+          for (const header of headers) {
+            tableHtml += `<th>${renderInlineMarkdown(header)}</th>`;
+          }
+          tableHtml += "</tr></thead><tbody>";
+
+          for (const row of rows) {
+            tableHtml += "<tr>";
+            for (let c = 0; c < headers.length; c++) {
+              const cell = row[c] ?? "";
+              tableHtml += `<td>${renderInlineMarkdown(cell)}</td>`;
+            }
+            tableHtml += "</tr>";
+          }
+
+          tableHtml += "</tbody></table>";
+          out.push(tableHtml);
           continue;
         }
 
@@ -842,14 +980,15 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
         return;
       }
 
+      const fullName = node.full_label || node.label || id;
       const summaryHtml = renderMarkdown(node.summary_lines || []);
 
       detailsEl.innerHTML = `
-        <h2>${escapeHtml(node.label)}</h2>
+        <h2>${escapeHtml(fullName)}</h2>
 
         <div class="panel-field">
           <div class="section-title">Node metadata</div>
-          <div class="meta-row"><span class="meta-label">Node:</span> ${escapeHtml(node.label)}</div>
+          <div class="meta-row"><span class="meta-label">Node:</span> ${escapeHtml(fullName)}</div>
           <div class="meta-row"><span class="meta-label">Source file:</span> ${node.source_file ? `<code>${escapeHtml(node.source_file)}</code>` : 'N/A'}</div>
           <div class="meta-row"><span class="meta-label">Summary file:</span> ${node.summary_file ? `<code>${escapeHtml(node.summary_file)}</code>` : 'N/A'}</div>
           <div class="meta-row"><span class="meta-label">In-degree:</span> ${node.in_degree}</div>
@@ -977,7 +1116,14 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
         nodes.update(updates);
       }
 
+      refreshEdgeHighlights();
       network.setData({ nodes: nodes, edges: edges });
+
+      if (selectedNodeId && nodes.get(selectedNodeId)) {
+        network.selectNodes([selectedNodeId]);
+      } else {
+        network.unselectAll();
+      }
 
       if (shouldFit) {
         setTimeout(() => {
@@ -1040,6 +1186,8 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
           edges.add(e);
         }
       }
+
+      refreshEdgeHighlights();
     }
 
     function relayout(shouldFit = false) {
