@@ -31,12 +31,39 @@ def parse_target(text: str):
     return -1, normalize(text)
 
 
+def read_summary_from_reference(node_path: Path, summary_ref: str):
+    ref = summary_ref.strip()
+    if not ref:
+        return []
+
+    summary_path = (node_path.parent / ref).resolve()
+
+    try:
+        summary_path.relative_to(node_path.parent.resolve())
+    except ValueError:
+        raise ValueError(
+            f"Summary file '{ref}' in '{node_path.name}' must stay within the same folder tree"
+        )
+
+    if not summary_path.exists():
+        raise FileNotFoundError(
+            f"Summary file '{ref}' referenced by '{node_path.name}' was not found"
+        )
+
+    if summary_path.suffix.lower() != ".md":
+        raise ValueError(
+            f"Summary file '{ref}' referenced by '{node_path.name}' must be a .md file"
+        )
+
+    return summary_path.read_text(encoding="utf-8").splitlines()
+
+
 def parse_markdown_file(path: Path):
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
 
     title = None
-    summary_lines = []
+    summary_ref = None
     current_section = None
 
     for line in lines:
@@ -54,10 +81,13 @@ def parse_markdown_file(path: Path):
                 current_section = None
                 continue
             if stripped:
-                summary_lines.append(stripped)
+                summary_ref = stripped
+                break
 
     if not title:
         title = path.stem
+
+    summary_lines = read_summary_from_reference(path, summary_ref or "")
 
     relationships = []
     in_relationships = False
@@ -91,7 +121,8 @@ def parse_markdown_file(path: Path):
             }
         )
 
-    return title, summary_lines, relationships
+    return title, (summary_ref or ""), summary_lines, relationships
+
 
 
 def build_graph(folder: Path):
@@ -102,18 +133,24 @@ def build_graph(folder: Path):
         raise FileNotFoundError(f"No .md files found in {folder}")
 
     for md_file in md_files:
-        title, summary_lines, relationships = parse_markdown_file(md_file)
+        title, summary_file, summary_lines, relationships = parse_markdown_file(md_file)
 
         if title not in graph:
-            graph.add_node(title, source_file=md_file.name, summary_lines=summary_lines)
+            graph.add_node(
+                title,
+                source_file=md_file.name,
+                summary_file=summary_file,
+                summary_lines=summary_lines,
+            )
         else:
             graph.nodes[title]["source_file"] = md_file.name
+            graph.nodes[title]["summary_file"] = summary_file
             graph.nodes[title]["summary_lines"] = summary_lines
 
         for rel in relationships:
             target = rel["target"]
             if target not in graph:
-                graph.add_node(target, source_file="", summary_lines=[])
+                graph.add_node(target, source_file="", summary_file="", summary_lines=[])
 
             graph.add_edge(
                 title,
@@ -232,6 +269,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
                 "label": node,
                 "level": levels.get(node, 0),
                 "source_file": attrs.get("source_file", ""),
+                "summary_file": attrs.get("summary_file", ""),
                 "summary_lines": summary_lines,
                 "in_degree": graph.in_degree(node),
                 "out_degree": graph.out_degree(node),
@@ -258,7 +296,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
             }
         )
 
-    template = """<!DOCTYPE html>
+    template = r"""<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -293,37 +331,121 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       min-width: 0;
       background: white;
     }
+    #splitter {
+      width: 8px;
+      cursor: col-resize;
+      background: linear-gradient(to right, #f3f3f3, #e3e3e3, #f3f3f3);
+      border-left: 1px solid #ddd;
+      border-right: 1px solid #ddd;
+      flex: 0 0 auto;
+    }
+    #splitter:hover {
+      background: linear-gradient(to right, #ececec, #d8d8d8, #ececec);
+    }
     #details {
       width: 360px;
-      border-left: 1px solid #ddd;
+      min-width: 220px;
+      max-width: 70vw;
       background: #fcfcfc;
       padding: 16px;
       overflow: auto;
       user-select: text;
       -webkit-user-select: text;
       white-space: normal;
+      flex: 0 0 auto;
     }
     #details h2 {
       margin: 0 0 8px 0;
       font-size: 22px;
     }
-    #details .meta {
+    #details .panel-field {
+      border: 1px solid #ddd;
+      background: white;
+      border-radius: 10px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+    #details .meta-row {
       color: #444;
       font-size: 14px;
       margin-bottom: 6px;
+      line-height: 1.45;
+    }
+    #details .meta-row:last-child {
+      margin-bottom: 0;
+    }
+    #details .meta-label {
+      font-weight: 700;
     }
     #details .section-title {
-      margin-top: 16px;
-      margin-bottom: 8px;
+      margin-top: 0;
+      margin-bottom: 10px;
       font-weight: bold;
       font-size: 14px;
       text-transform: uppercase;
       letter-spacing: 0.04em;
       color: #444;
     }
-    #details .summary-line {
-      margin: 0 0 8px 0;
-      line-height: 1.45;
+    #details .summary-markdown {
+      line-height: 1.5;
+    }
+    #details .summary-markdown > :first-child {
+      margin-top: 0;
+    }
+    #details .summary-markdown > :last-child {
+      margin-bottom: 0;
+    }
+    #details .summary-markdown h1,
+    #details .summary-markdown h2,
+    #details .summary-markdown h3,
+    #details .summary-markdown h4,
+    #details .summary-markdown h5,
+    #details .summary-markdown h6 {
+      margin-top: 1em;
+      margin-bottom: 0.5em;
+      font-weight: 700;
+    }
+    #details .summary-markdown p,
+    #details .summary-markdown ul,
+    #details .summary-markdown ol,
+    #details .summary-markdown blockquote,
+    #details .summary-markdown pre {
+      margin-top: 0;
+      margin-bottom: 12px;
+    }
+    #details .summary-markdown ul,
+    #details .summary-markdown ol {
+      padding-left: 22px;
+    }
+    #details .summary-markdown pre {
+      overflow: auto;
+      padding: 12px;
+      border-radius: 8px;
+      background: #f3f3f3;
+      white-space: pre-wrap;
+      tab-size: 4;
+    }
+    #details .summary-markdown code {
+      background: #f3f3f3;
+      padding: 1px 4px;
+      border-radius: 4px;
+      white-space: pre-wrap;
+    }
+    #details .summary-markdown pre code {
+      background: transparent;
+      padding: 0;
+      border-radius: 0;
+      white-space: pre;
+    }
+    #details .summary-markdown blockquote {
+      padding-left: 12px;
+      border-left: 4px solid #ddd;
+      color: #555;
+    }
+    #details .summary-markdown hr {
+      border: none;
+      border-top: 1px solid #ddd;
+      margin: 16px 0;
     }
     #details .empty {
       color: #666;
@@ -362,10 +484,11 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
 
   <div id="main">
     <div id="net"></div>
+    <div id="splitter" title="Drag to resize details panel"></div>
     <aside id="details">
       <div class="empty">
-        Click a node to see its details here.<br><br>
-        You can highlight and copy text from this panel.
+        Click a node to see its metadata and summary here.<br><br>
+        You can highlight and copy text from both fields.
       </div>
     </aside>
   </div>
@@ -381,6 +504,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     const nodes = new vis.DataSet();
     const edges = new vis.DataSet();
     const detailsEl = document.getElementById("details");
+    const splitterEl = document.getElementById("splitter");
 
     const network = new vis.Network(
       document.getElementById("net"),
@@ -439,6 +563,210 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
         .replaceAll("'", "&#39;");
     }
 
+    function renderInlineMarkdown(text) {
+      let html = escapeHtml(text);
+      html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+      html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
+      html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+      return html;
+    }
+
+    function leadingSpaceCount(text) {
+      const match = String(text || "").match(/^[ \t]*/);
+      if (!match) return 0;
+      return match[0].replace(/\t/g, "    ").length;
+    }
+
+    function renderMarkdown(summaryLines) {
+      const lines = summaryLines || [];
+      const out = [];
+      let inCodeBlock = false;
+      let codeLines = [];
+      let inBlockquote = false;
+      let quoteLines = [];
+      let paragraphLines = [];
+      const listStack = [];
+
+      function closeListsToDepth(targetDepth = 0) {
+        while (listStack.length > targetDepth) {
+          const top = listStack.pop();
+          if (top.hasOpenItem) {
+            out.push(`</li></${top.type}>`);
+          } else {
+            out.push(`</${top.type}>`);
+          }
+        }
+      }
+
+      function openListContainer(type) {
+        out.push(`<${type}>`);
+        listStack.push({ type, hasOpenItem: false });
+      }
+
+      function startListItem(type, depth) {
+        while (listStack.length > depth) {
+          const top = listStack.pop();
+          if (top.hasOpenItem) {
+            out.push(`</li></${top.type}>`);
+          } else {
+            out.push(`</${top.type}>`);
+          }
+        }
+
+        while (listStack.length < depth) {
+          openListContainer(type);
+        }
+
+        const current = listStack[listStack.length - 1];
+        if (!current || current.type !== type) {
+          if (current) {
+            if (current.hasOpenItem) {
+              out.push(`</li></${current.type}>`);
+            } else {
+              out.push(`</${current.type}>`);
+            }
+            listStack.pop();
+          }
+          openListContainer(type);
+        }
+
+        const active = listStack[listStack.length - 1];
+        if (active.hasOpenItem) {
+          out.push(`</li><li>`);
+        } else {
+          out.push(`<li>`);
+          active.hasOpenItem = true;
+        }
+      }
+
+      function flushParagraph() {
+        if (!paragraphLines.length) return;
+        const text = paragraphLines
+          .map(line => line.trim() ? line.trim() : "")
+          .join(" ")
+          .trim();
+        if (text) {
+          out.push(`<p>${renderInlineMarkdown(text)}</p>`);
+        }
+        paragraphLines = [];
+      }
+
+      function flushBlockquote() {
+        if (!inBlockquote) return;
+        const content = quoteLines.map(line => renderInlineMarkdown(line)).join("<br>");
+        out.push(`<blockquote>${content}</blockquote>`);
+        inBlockquote = false;
+        quoteLines = [];
+      }
+
+      function flushCodeBlock() {
+        if (!inCodeBlock) return;
+        out.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+        inCodeBlock = false;
+        codeLines = [];
+      }
+
+      function flushNonListBlocks() {
+        flushParagraph();
+        flushBlockquote();
+      }
+
+      for (const rawLine of lines) {
+        const line = rawLine ?? "";
+        const trimmed = line.trim();
+
+        if (line.startsWith("```")) {
+          flushNonListBlocks();
+          closeListsToDepth(0);
+          if (inCodeBlock) {
+            flushCodeBlock();
+          } else {
+            inCodeBlock = true;
+          }
+          continue;
+        }
+
+        if (inCodeBlock) {
+          codeLines.push(line);
+          continue;
+        }
+
+        if (!trimmed) {
+          flushNonListBlocks();
+          closeListsToDepth(0);
+          continue;
+        }
+
+        if (/^\s*(?:---|\*\*\*|___)\s*$/.test(line)) {
+          flushNonListBlocks();
+          out.push("<hr>");
+          continue;
+        }
+
+        const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+        if (headingMatch) {
+          flushNonListBlocks();
+          closeListsToDepth(0);
+          const level = headingMatch[1].length;
+          out.push(`<h${level}>${renderInlineMarkdown(headingMatch[2])}</h${level}>`);
+          continue;
+        }
+
+        const blockquoteMatch = line.match(/^>\s?(.*)$/);
+        if (blockquoteMatch) {
+          flushParagraph();
+          closeListsToDepth(0);
+          inBlockquote = true;
+          quoteLines.push(blockquoteMatch[1]);
+          continue;
+        } else {
+          flushBlockquote();
+        }
+
+        const ulMatch = line.match(/^(\s*)[-*+]\s*(.*)$/);
+        if (ulMatch) {
+          const content = ulMatch[2].trim();
+          if (!content) {
+            flushParagraph();
+            closeListsToDepth(0);
+            continue;
+          }
+          flushParagraph();
+          const indent = leadingSpaceCount(ulMatch[1]);
+          const depth = Math.floor(indent / 2) + 1;
+          startListItem("ul", depth);
+          out.push(renderInlineMarkdown(content));
+          continue;
+        }
+
+        const olMatch = line.match(/^(\s*)\d+\.\s*(.*)$/);
+        if (olMatch) {
+          const content = olMatch[2].trim();
+          if (!content) {
+            flushParagraph();
+            closeListsToDepth(0);
+            continue;
+          }
+          flushParagraph();
+          const indent = leadingSpaceCount(olMatch[1]);
+          const depth = Math.floor(indent / 2) + 1;
+          startListItem("ol", depth);
+          out.push(renderInlineMarkdown(content));
+          continue;
+        }
+
+        closeListsToDepth(0);
+        paragraphLines.push(line);
+      }
+
+      flushParagraph();
+      closeListsToDepth(0);
+      flushBlockquote();
+      flushCodeBlock();
+
+      return out.join("\n");
+    }
+
     function renderDetails(id) {
       const node = nodeMap.get(id);
       if (!node) {
@@ -446,17 +774,25 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
         return;
       }
 
-      const summary = (node.summary_lines || [])
-        .map(line => `<div class="summary-line">${escapeHtml(line)}</div>`)
-        .join("");
+      const summaryHtml = renderMarkdown(node.summary_lines || []);
 
       detailsEl.innerHTML = `
         <h2>${escapeHtml(node.label)}</h2>
-        <div class="meta">in-degree: ${node.in_degree}</div>
-        <div class="meta">out-degree: ${node.out_degree}</div>
-        ${node.source_file ? `<div class="meta">file: <code>${escapeHtml(node.source_file)}</code></div>` : ""}
-        <div class="section-title">Summary</div>
-        ${summary || '<div class="empty">No summary available for this node.</div>'}
+
+        <div class="panel-field">
+          <div class="section-title">Node metadata</div>
+          <div class="meta-row"><span class="meta-label">Node:</span> ${escapeHtml(node.label)}</div>
+          <div class="meta-row"><span class="meta-label">Source file:</span> ${node.source_file ? `<code>${escapeHtml(node.source_file)}</code>` : 'N/A'}</div>
+          <div class="meta-row"><span class="meta-label">Summary file:</span> ${node.summary_file ? `<code>${escapeHtml(node.summary_file)}</code>` : 'N/A'}</div>
+          <div class="meta-row"><span class="meta-label">In-degree:</span> ${node.in_degree}</div>
+          <div class="meta-row"><span class="meta-label">Out-degree:</span> ${node.out_degree}</div>
+          <div class="meta-row"><span class="meta-label">Level:</span> ${node.level}</div>
+        </div>
+
+        <div class="panel-field">
+          <div class="section-title">Summary content</div>
+          ${summaryHtml ? `<div class="summary-markdown">${summaryHtml}</div>` : '<div class="empty">No summary available for this node.</div>'}
+        </div>
       `;
     }
 
@@ -499,6 +835,49 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       currentLevels = computeLevelsForRoot(rootId);
       activeNodeIds = new Set(subtreeNodesOf(rootId));
 
+      const xSpacing = 260;
+      const ySpacing = 170;
+      const nextXByLevel = {};
+      const placed = new Set();
+
+      function placeNode(nodeId) {
+        if (!activeNodeIds.has(nodeId) || placed.has(nodeId)) {
+          return;
+        }
+
+        const level = currentLevels[nodeId] || 0;
+        if (!(level in nextXByLevel)) {
+          nextXByLevel[level] = 0;
+        }
+
+        const stored = nodeMap.get(nodeId);
+        if (stored) {
+          stored.level = level;
+          stored.x = nextXByLevel[level] * xSpacing;
+          stored.y = level * ySpacing;
+        }
+        nextXByLevel[level] += 1;
+        placed.add(nodeId);
+
+        const orderedKids = (children[nodeId] || []).filter(child => activeNodeIds.has(child));
+        for (const child of orderedKids) {
+          placeNode(child);
+        }
+      }
+
+      placeNode(rootId);
+
+      const remaining = [...activeNodeIds].filter(nodeId => !placed.has(nodeId));
+      remaining.sort((a, b) => {
+        const levelDiff = (currentLevels[a] || 0) - (currentLevels[b] || 0);
+        if (levelDiff !== 0) return levelDiff;
+        return a.localeCompare(b, undefined, { sensitivity: "base" });
+      });
+
+      for (const nodeId of remaining) {
+        placeNode(nodeId);
+      }
+
       const levelBuckets = {};
       for (const nodeId of activeNodeIds) {
         const level = currentLevels[nodeId] || 0;
@@ -508,22 +887,20 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
         levelBuckets[level].push(nodeId);
       }
 
-      for (const level of Object.keys(levelBuckets)) {
-        levelBuckets[level].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-      }
-
-      const xSpacing = 260;
-      const ySpacing = 170;
-
-      for (const [levelText, levelNodes] of Object.entries(levelBuckets)) {
+      for (const levelText of Object.keys(levelBuckets)) {
         const level = Number(levelText);
+        const levelNodes = levelBuckets[level];
+        levelNodes.sort((a, b) => {
+          const ax = (nodeMap.get(a) || {}).x || 0;
+          const bx = (nodeMap.get(b) || {}).x || 0;
+          return ax - bx;
+        });
         const count = levelNodes.length;
         const startX = -((count - 1) * xSpacing) / 2;
         for (let idx = 0; idx < levelNodes.length; idx++) {
           const nodeId = levelNodes[idx];
           const stored = nodeMap.get(nodeId);
           if (stored) {
-            stored.level = level;
             stored.x = startX + idx * xSpacing;
             stored.y = level * ySpacing;
           }
@@ -678,7 +1055,8 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     }
 
     function restoreOriginalTree() {
-      initFromRoot(ORIGINAL_ROOT);
+      installSplitter();
+    initFromRoot(ORIGINAL_ROOT);
     }
 
     function fitGraph() {
@@ -687,6 +1065,35 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
           duration: 250,
           easingFunction: "easeInOutQuad"
         }
+      });
+    }
+
+
+    function installSplitter() {
+      let resizing = false;
+
+      splitterEl.addEventListener("mousedown", function(event) {
+        resizing = true;
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+        event.preventDefault();
+      });
+
+      window.addEventListener("mousemove", function(event) {
+        if (!resizing) return;
+        const minWidth = 220;
+        const maxWidth = Math.floor(window.innerWidth * 0.7);
+        const newWidth = window.innerWidth - event.clientX;
+        const clamped = Math.max(minWidth, Math.min(maxWidth, newWidth));
+        detailsEl.style.width = `${clamped}px`;
+        network.redraw();
+      });
+
+      window.addEventListener("mouseup", function() {
+        if (!resizing) return;
+        resizing = false;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
       });
     }
 
@@ -744,6 +1151,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       pointerMovedDuringDrag = false;
     });
 
+    installSplitter();
     initFromRoot(ORIGINAL_ROOT);
   </script>
 </body>
@@ -777,7 +1185,7 @@ def main():
     parser.add_argument(
         "--title",
         type=str,
-        default="Collapsible Knowledge Graph",
+        default="Knowledge Graph",
         help="HTML title",
     )
     args = parser.parse_args()
@@ -791,7 +1199,7 @@ def main():
 
     html = generate_html(graph, root, args.depth, args.title)
 
-    html_path = output_dir / "collapsible_graph.html"
+    html_path = output_dir / "graph.html"
     graphml_path = output_dir / "graph.graphml"
 
     html_path.write_text(html, encoding="utf-8")
