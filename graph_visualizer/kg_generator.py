@@ -260,13 +260,18 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
             }
 
     nodes = []
+    max_label_chars = 24
     for node, attrs in graph.nodes(data=True):
         summary_lines = attrs.get("summary_lines", []) or []
         pos = positions.get(node, {"x": 0, "y": 0})
+        short_label = node if len(node) <= max_label_chars else node[: max_label_chars - 1].rstrip() + "…"
         nodes.append(
             {
                 "id": node,
-                "label": node,
+                "label": short_label,
+                "full_label": node,
+                "short_label": short_label,
+                "title": node,
                 "level": levels.get(node, 0),
                 "source_file": attrs.get("source_file", ""),
                 "summary_file": attrs.get("summary_file", ""),
@@ -479,7 +484,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     <button onclick="setSelectedAsRoot()">Set selected as root</button>
     <button onclick="restoreOriginalTree()">Restore original tree</button>
     <button onclick="fitGraph()">Fit</button>
-    <span class="hint">Click a node to select it and expand/collapse it. The visible graph auto-reorganizes after each click for a clearer layout while keeping children below parents and sibling edge order left-to-right. Shift-click only shows details.</span>
+    <span class="hint">Click a node to select it and expand/collapse it. Node labels are shortened by default, and the selected node shows its full name. The graph auto-reorganizes after each click for a clearer layout while keeping children below parents and sibling edge order left-to-right. Shift-click only shows details.</span>
   </div>
 
   <div id="main">
@@ -525,8 +530,18 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
         nodes: {
           shape: "dot",
           size: 18,
+          widthConstraint: {
+            maximum: 190
+          },
+          margin: {
+            top: 10,
+            right: 10,
+            bottom: 10,
+            left: 10
+          },
           font: {
-            size: 18
+            size: 18,
+            multi: false
           }
         },
         edges: {
@@ -553,6 +568,59 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     let selectedNodeId = ORIGINAL_ROOT;
     let currentLevels = {};
     let activeNodeIds = new Set();
+
+    function refreshNodeLabels() {
+      const updates = nodes.getIds().map(id => {
+        const stored = nodeMap.get(id);
+        if (!stored) return null;
+        return {
+          id,
+          label: id === selectedNodeId ? stored.full_label : stored.short_label,
+          title: stored.full_label,
+        };
+      }).filter(Boolean);
+
+      if (updates.length) {
+        nodes.update(updates);
+      }
+    }
+
+    function spreadLevelPositions() {
+      const minGap = 230;
+      const levelGroups = {};
+
+      for (const id of nodes.getIds()) {
+        const stored = nodeMap.get(id);
+        if (!stored) continue;
+        const level = stored.level || 0;
+        if (!levelGroups[level]) {
+          levelGroups[level] = [];
+        }
+        levelGroups[level].push(stored);
+      }
+
+      for (const level of Object.keys(levelGroups)) {
+        const items = levelGroups[level].sort((a, b) => a.x - b.x);
+        if (!items.length) continue;
+
+        const originalCenter = items.reduce((acc, item) => acc + item.x, 0) / items.length;
+
+        for (let i = 1; i < items.length; i++) {
+          const prev = items[i - 1];
+          const cur = items[i];
+          if (cur.x - prev.x < minGap) {
+            cur.x = prev.x + minGap;
+          }
+        }
+
+        const adjustedCenter = items.reduce((acc, item) => acc + item.x, 0) / items.length;
+        const shift = originalCenter - adjustedCenter;
+
+        for (const item of items) {
+          item.x += shift;
+        }
+      }
+    }
 
     function escapeHtml(text) {
       return String(text)
@@ -851,40 +919,38 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       const xSpacing = 260;
       const ySpacing = 170;
 
-      function place(nodeId, leftUnits) {
+      function place(nodeId, centerX) {
         if (!visibleSet.has(nodeId)) return;
 
-        const widthUnits = subtreeWidth[nodeId] || 1;
-        const centerUnits = leftUnits + (widthUnits - 1) / 2;
         positions[nodeId] = {
-          x: centerUnits * xSpacing,
+          x: centerX,
           y: (currentLevels[nodeId] || 0) * ySpacing,
         };
 
-        let cursor = leftUnits;
-        for (const child of visibleChildrenOf(nodeId)) {
-          const childWidth = subtreeWidth[child] || 1;
-          place(child, cursor);
-          cursor += childWidth;
+        const kids = visibleChildrenOf(nodeId);
+        if (!kids.length) {
+          return;
+        }
+
+        const totalWidthUnits = kids.reduce((acc, child) => acc + (subtreeWidth[child] || 1), 0);
+        let leftEdge = centerX - ((totalWidthUnits - 1) * xSpacing) / 2;
+
+        for (const child of kids) {
+          const childUnits = subtreeWidth[child] || 1;
+          const childCenterX = leftEdge + ((childUnits - 1) * xSpacing) / 2;
+          place(child, childCenterX);
+          leftEdge += childUnits * xSpacing;
         }
       }
 
       place(rootId, 0);
 
       const visibleNodes = Array.from(visibleSet);
-      const xs = visibleNodes
-        .filter(id => positions[id])
-        .map(id => positions[id].x);
-
-      const minX = xs.length ? Math.min(...xs) : 0;
-      const maxX = xs.length ? Math.max(...xs) : 0;
-      const offsetX = -((minX + maxX) / 2);
-
       for (const nodeId of visibleNodes) {
         const stored = nodeMap.get(nodeId);
         const pos = positions[nodeId];
         if (!stored || !pos) continue;
-        stored.x = pos.x + offsetX;
+        stored.x = pos.x;
         stored.y = pos.y;
         stored.level = currentLevels[nodeId] || 0;
       }
@@ -892,10 +958,19 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
 
     function reorganizeVisibleGraph(shouldFit = false) {
       computeVisibleLayout(currentRoot);
+      spreadLevelPositions();
 
       const updates = nodes.getIds().map(id => {
         const stored = nodeMap.get(id);
-        return stored ? { id, x: stored.x, y: stored.y, level: stored.level } : null;
+        if (!stored) return null;
+        return {
+          id,
+          x: stored.x,
+          y: stored.y,
+          level: stored.level,
+          label: id === selectedNodeId ? stored.full_label : stored.short_label,
+          title: stored.full_label,
+        };
       }).filter(Boolean);
 
       if (updates.length) {
@@ -1142,6 +1217,22 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
             stored.x = pos.x;
             stored.y = pos.y;
           }
+        }
+        spreadLevelPositions();
+        refreshNodeLabels();
+        const updates = nodes.getIds().map(id => {
+          const stored = nodeMap.get(id);
+          if (!stored) return null;
+          return {
+            id,
+            x: stored.x,
+            y: stored.y,
+            label: id === selectedNodeId ? stored.full_label : stored.short_label,
+            title: stored.full_label,
+          };
+        }).filter(Boolean);
+        if (updates.length) {
+          nodes.update(updates);
         }
       }
     });
