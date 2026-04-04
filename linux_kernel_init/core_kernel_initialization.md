@@ -4,6 +4,7 @@
 core_kernel_initialization_summary.md
 
 ## Relationships
+- more details -> GDT
 - performs -> [1] Basic system setup
 - performs -> [2] Memory management initialization
 - sets up -> [3] Interrupts and exception handling

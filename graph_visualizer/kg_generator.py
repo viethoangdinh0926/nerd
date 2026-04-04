@@ -24,11 +24,12 @@ def parse_relation_line(line: str):
     return None
 
 
-def parse_target(text: str):
+def parse_target(text: str, fallback_order: int):
+    # Ignore explicit [1], [2], etc. — always use inferred order
     m = re.match(r"^\[(\d+)\]\s*(.+)$", text)
     if m:
-        return int(m.group(1)), normalize(m.group(2))
-    return -1, normalize(text)
+        return fallback_order, normalize(m.group(2))
+    return fallback_order, normalize(text)
 
 
 def read_summary_from_reference(node_path: Path, summary_ref: str):
@@ -91,6 +92,7 @@ def parse_markdown_file(path: Path):
 
     relationships = []
     in_relationships = False
+    relationship_index = 0
 
     for line in lines:
         if line.startswith("## "):
@@ -110,8 +112,9 @@ def parse_markdown_file(path: Path):
         if not parsed:
             continue
 
+        relationship_index += 1
         relation, target_text = parsed
-        order, target = parse_target(target_text)
+        order, target = parse_target(target_text, fallback_order=relationship_index)
 
         relationships.append(
             {
@@ -514,7 +517,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     <button onclick="setSelectedAsRoot()">Set selected as root</button>
     <button onclick="restoreOriginalTree()">Restore original tree</button>
     <button onclick="fitGraph()">Fit</button>
-    <span class="hint">Click a node to select it and expand/collapse it. The clicked node is highlighted, incoming and outgoing edges use different colors, node labels are shortened by default, and the selected node shows its full name. The graph auto-reorganizes after each click for a clearer layout while keeping children below parents and sibling edge order left-to-right. Shift-click only shows details.</span>
+    <span class="hint">Click a node to select it. Clicking a node that is not currently in focus expands it. Clicking the same in-focus node again collapses it. The clicked node is highlighted, incoming and outgoing edges use different colors, node labels are shortened by default, and the selected node shows its full name. The graph auto-reorganizes after each click for a clearer layout while keeping children below parents and sibling edge order left-to-right. Shift-click only shows details.</span>
   </div>
 
   <div id="main">
@@ -1391,15 +1394,24 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
         : null;
 
       if (!nodeId) {
+        if (selectedNodeId && nodes.get(selectedNodeId)) {
+          network.selectNodes([selectedNodeId]);
+          refreshEdgeHighlights();
+        }
         pointerMovedDuringDrag = false;
         return;
       }
 
       if (pointerMovedDuringDrag) {
+        if (selectedNodeId && nodes.get(selectedNodeId)) {
+          network.selectNodes([selectedNodeId]);
+          refreshEdgeHighlights();
+        }
         pointerMovedDuringDrag = false;
         return;
       }
 
+      const wasSelectedBeforeClick = selectedNodeId === nodeId;
       selectedNodeId = nodeId;
       renderDetails(nodeId);
 
@@ -1412,11 +1424,36 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       );
 
       if (!shiftKey) {
-        toggleNode(nodeId);
+        const directChildren = (children[nodeId] || []).filter(child => activeNodeIds.has(child));
+        const hasVisibleChild = directChildren.some(child => nodes.get(child));
+
+        if (wasSelectedBeforeClick && hasVisibleChild) {
+          hideSubtree(nodeId);
+        } else {
+          expandOneLevel(nodeId);
+        }
       }
 
       relayout(false);
       pointerMovedDuringDrag = false;
+    });
+
+    network.on("click", function(params) {
+      if (params.nodes && params.nodes.length) {
+        return;
+      }
+
+      if (selectedNodeId && nodes.get(selectedNodeId)) {
+        network.selectNodes([selectedNodeId]);
+        refreshEdgeHighlights();
+      }
+    });
+
+    network.on("deselectNode", function() {
+      if (selectedNodeId && nodes.get(selectedNodeId)) {
+        network.selectNodes([selectedNodeId]);
+        refreshEdgeHighlights();
+      }
     });
 
     installSplitter();

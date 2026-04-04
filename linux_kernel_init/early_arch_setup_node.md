@@ -4,9 +4,10 @@
 early_arch_setup_summary.md
 
 ## Relationships
-- initializes -> [1] Early Page Tables
-- enables -> [2] Paging Mechanism (CR3, CR0, CR4)
-- switches to -> [3] Virtual Address Space
-- prepares -> [4] Kernel Stack
-- clears -> [5] BSS Section
-- prepares -> [6] Transition to start_kernel()
+- more details -> GDT
+- initializes -> Early Page Tables
+- enables -> Paging Mechanism (CR3, CR0, CR4)
+- switches to -> Virtual Address Space
+- prepares -> Kernel Stack
+- clears -> BSS Section
+- prepares -> Transition to start_kernel()
