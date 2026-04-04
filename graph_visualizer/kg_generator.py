@@ -616,6 +616,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
 
     const nodeMap = new Map(nodesData.map(n => [n.id, n]));
     const hidden = new Set();
+    const expandedNodes = new Set();
     let pointerMovedDuringDrag = false;
     let currentRoot = ORIGINAL_ROOT;
     let selectedNodeId = ORIGINAL_ROOT;
@@ -1209,6 +1210,52 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       }
     }
 
+    function computeWantedVisibleNodes() {
+      const wanted = new Set();
+
+      for (const nodeId of activeNodeIds) {
+        if ((currentLevels[nodeId] || 0) <= INIT_DEPTH) {
+          wanted.add(nodeId);
+        }
+      }
+
+      wanted.add(currentRoot);
+
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const nodeId of Array.from(wanted)) {
+          if (!expandedNodes.has(nodeId)) continue;
+          for (const child of (children[nodeId] || []).filter(child => activeNodeIds.has(child))) {
+            if (!wanted.has(child)) {
+              wanted.add(child);
+              changed = true;
+            }
+          }
+        }
+      }
+
+      return wanted;
+    }
+
+    function updateVisibleNodes() {
+      const wanted = computeWantedVisibleNodes();
+
+      for (const nodeId of Array.from(nodes.getIds())) {
+        if (!wanted.has(nodeId)) {
+          nodes.remove(nodeId);
+          hidden.add(nodeId);
+        }
+      }
+
+      for (const nodeId of wanted) {
+        hidden.delete(nodeId);
+        showNode(nodeId);
+      }
+
+      return wanted;
+    }
+
     function descendantsOf(id) {
       const result = [];
       const stack = [...(children[id] || [])];
@@ -1228,23 +1275,15 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     }
 
     function hideSubtree(id) {
-      const desc = descendantsOf(id);
-      for (const d of desc) {
-        hidden.add(d);
-        if (nodes.get(d)) {
-          nodes.remove(d);
-        }
-      }
+      expandedNodes.delete(id);
+      updateVisibleNodes();
       syncEdges();
       relayout(false);
     }
 
     function expandOneLevel(id) {
-      const directChildren = (children[id] || []).filter(child => activeNodeIds.has(child));
-      for (const child of directChildren) {
-        hidden.delete(child);
-        showNode(child);
-      }
+      expandedNodes.add(id);
+      updateVisibleNodes();
       syncEdges();
       relayout(false);
     }
@@ -1265,18 +1304,12 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       currentRoot = rootId;
       selectedNodeId = rootId;
       hidden.clear();
+      expandedNodes.clear();
       nodes.clear();
       edges.clear();
       applyLayoutForRoot(rootId);
 
-      for (const nodeId of activeNodeIds) {
-        if ((currentLevels[nodeId] || 0) <= INIT_DEPTH) {
-          showNode(nodeId);
-        } else {
-          hidden.add(nodeId);
-        }
-      }
-
+      updateVisibleNodes();
       syncEdges();
       relayout(true);
       renderDetails(rootId);
@@ -1285,19 +1318,16 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     function expandAll() {
       hidden.clear();
       for (const nodeId of activeNodeIds) {
-        showNode(nodeId);
+        expandedNodes.add(nodeId);
       }
+      updateVisibleNodes();
       syncEdges();
       relayout(true);
     }
 
     function collapseAll() {
-      for (const id of [...nodes.getIds()]) {
-        if (id !== currentRoot) {
-          nodes.remove(id);
-          hidden.add(id);
-        }
-      }
+      expandedNodes.clear();
+      updateVisibleNodes();
       syncEdges();
       relayout(true);
     }
