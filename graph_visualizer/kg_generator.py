@@ -466,24 +466,49 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       margin: 16px 0;
     }
     #details .summary-markdown table {
-      border-collapse: collapse;
       width: 100%;
-      margin-bottom: 12px;
-      display: table;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 14px;
+      line-height: 1.5;
+      overflow-x: auto;
+      display: block;
+      background: #000;
+      color: #fff;
+    }
+    #details .summary-markdown thead {
+      background: #111;
+      color: #fff;
     }
     #details .summary-markdown th,
     #details .summary-markdown td {
-      border: 1px solid #ddd;
-      padding: 8px 10px;
+      padding: 10px 12px;
       text-align: left;
       vertical-align: top;
+      border-bottom: 1px solid #333;
+      color: #fff;
     }
     #details .summary-markdown th {
-      background: #f5f5f5;
       font-weight: 600;
+      letter-spacing: 0.02em;
     }
-    #details .summary-markdown tr:nth-child(even) {
-      background: #fafafa;
+    #details .summary-markdown tbody tr:nth-child(even) {
+      background: #0a0a0a;
+    }
+    #details .summary-markdown tbody tr:hover {
+      background: #111827;
+    }
+    #details .summary-markdown td + td,
+    #details .summary-markdown th + th {
+      border-left: 1px solid #222;
+    }
+    #details .summary-markdown {
+      overflow-x: auto;
+    }
+    #details .summary-markdown thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
     }
     #details .empty {
       color: #666;

@@ -5,9 +5,6 @@ core_kernel_initialization_summary.md
 
 ## Relationships
 - more details -> GDT
-- performs -> [1] Basic system setup
-- performs -> [2] Memory management initialization
-- sets up -> [3] Interrupts and exception handling
-- sets up -> [4] Timer and scheduler initialization
-- sets up -> [5] Kernel subsystems initialization
-- performs -> [6] Enable interrupts
+- performs -> Basic system setup
+- setup -> Subsystems
+- performs -> Enable interrupts
