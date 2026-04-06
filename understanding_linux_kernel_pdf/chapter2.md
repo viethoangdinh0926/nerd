@@ -5,3 +5,4 @@ chapter2_summary.md
 
 ## Relationships
 - next -> Segmentation in hardware
+- next -> Paging in hardware
