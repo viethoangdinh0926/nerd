@@ -144,11 +144,13 @@ def build_graph(folder: Path):
                 source_file=md_file.name,
                 summary_file=summary_file,
                 summary_lines=summary_lines,
+                source_path=str(md_file.resolve()),
             )
         else:
             graph.nodes[title]["source_file"] = md_file.name
             graph.nodes[title]["summary_file"] = summary_file
             graph.nodes[title]["summary_lines"] = summary_lines
+            graph.nodes[title]["source_path"] = str(md_file.resolve())
 
         for rel in relationships:
             target = rel["target"]
@@ -238,6 +240,25 @@ def sanitize_graphml(graph: nx.DiGraph):
 
 
 
+
+def slugify_filename(title: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9._-]+", "_", title.strip())
+    slug = slug.strip("._")
+    return slug or "node"
+
+
+def make_unique_title(graph: nx.DiGraph, desired: str):
+    base = normalize(desired)
+    if not base:
+        raise ValueError("Node title cannot be empty")
+    if base not in graph:
+        return base
+
+    suffix = 2
+    while f"{base} ({suffix})" in graph:
+        suffix += 1
+    return f"{base} ({suffix})"
+
 def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     cmap = build_children_map(graph)
     levels = compute_levels(graph, root)
@@ -277,6 +298,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
                 "title": node,
                 "level": levels.get(node, 0),
                 "source_file": attrs.get("source_file", ""),
+                "source_path": attrs.get("source_path", ""),
                 "summary_file": attrs.get("summary_file", ""),
                 "summary_lines": summary_lines,
                 "in_degree": graph.in_degree(node),
@@ -298,6 +320,8 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
                 "id": f"{u}->{v}",
                 "from": u,
                 "to": v,
+                "relation": d.get("relation", ""),
+                "order": order,
                 "label": label,
                 "full_label": label,
                 "title": f"{u} → {v}<br>relation: {d.get('relation', '')}"
@@ -528,6 +552,82 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       color: #555;
       font-size: 14px;
     }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .form-grid label {
+      font-size: 14px;
+      color: #222;
+      display: block;
+    }
+    .form-grid input,
+    .form-grid textarea,
+    .form-grid select {
+      width: 100%;
+      margin-top: 6px;
+      border: 1px solid #bbb;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font: inherit;
+      background: #fff;
+    }
+    .form-grid textarea {
+      min-height: 140px;
+      resize: vertical;
+    }
+    .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    dialog {
+      border: 1px solid #ccc;
+      border-radius: 14px;
+      padding: 0;
+      width: min(720px, 92vw);
+      box-shadow: 0 18px 50px rgba(0,0,0,0.2);
+    }
+    dialog::backdrop {
+      background: rgba(0,0,0,0.35);
+    }
+    .dialog-card {
+      padding: 18px;
+      background: #fff;
+    }
+    .dialog-title {
+      margin: 0 0 12px 0;
+      font-size: 22px;
+    }
+    .dialog-help {
+      color: #555;
+      font-size: 14px;
+      line-height: 1.45;
+      margin-bottom: 14px;
+    }
+    .status-box {
+      margin-top: 12px;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 14px;
+      line-height: 1.45;
+      display: none;
+    }
+    .status-box.error {
+      display: block;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+    }
+    .status-box.success {
+      display: block;
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      color: #065f46;
+    }
     code {
       background: #f3f3f3;
       padding: 1px 4px;
@@ -542,6 +642,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     <button onclick="setSelectedAsRoot()">Set selected as root</button>
     <button onclick="restoreOriginalTree()">Restore original tree</button>
     <button onclick="fitGraph()">Fit</button>
+    <button onclick="openCreateChildDialog()">Add child node</button>
     <span class="hint">Click a node to select it. Clicking a node that is not currently in focus expands it. Clicking the same in-focus node again collapses it. The clicked node is highlighted, incoming and outgoing edges use different colors, node labels are shortened by default, and the selected node shows its full name. The graph auto-reorganizes after each click for a clearer layout while keeping children below parents and sibling edge order left-to-right. Shift-click only shows details.</span>
   </div>
 
@@ -555,6 +656,43 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       </div>
     </aside>
   </div>
+
+
+  <dialog id="createChildDialog">
+    <div class="dialog-card">
+      <h3 class="dialog-title">Add child node</h3>
+      <div class="dialog-help">Select a parent node first. In Chromium-based browsers, this can create the new source and summary markdown files inside the parent directory of the folder containing this HTML file, after you grant access to that folder tree.</div>
+      <form id="createChildForm" class="form-grid" method="dialog">
+        <label>Parent node
+          <input id="childParentNode" name="parentNode" type="text" readonly>
+        </label>
+        <label>Child node title
+          <input id="childNodeTitle" name="childNodeTitle" type="text" required>
+        </label>
+        <label>Edge relation label
+          <input id="childEdgeRelation" name="childEdgeRelation" type="text" placeholder="performs" required>
+        </label>
+        <label>Edge order among parent outgoing edges
+          <input id="childEdgeOrder" name="childEdgeOrder" type="number" min="1" step="1" required>
+        </label>
+        <label>Source markdown file name
+          <input id="childSourceFile" name="childSourceFile" type="text" placeholder="new_child.md" required>
+        </label>
+        <label>Summary markdown file name
+          <input id="childSummaryFile" name="childSummaryFile" type="text" placeholder="new_child_summary.md" required>
+        </label>
+        <label>Summary markdown content
+          <textarea id="childSummaryContent" name="childSummaryContent" placeholder="# Summary
+Write markdown here..." required></textarea>
+        </label>
+        <div class="dialog-actions">
+          <button type="button" onclick="closeCreateChildDialog()">Cancel</button>
+          <button type="submit">Create child</button>
+        </div>
+        <div id="createChildStatus" class="status-box"></div>
+      </form>
+    </div>
+  </dialog>
 
   <script>
     const ROOT = __ROOT__;
@@ -583,7 +721,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
           dragView: true,
           zoomView: true,
           navigationButtons: true,
-          keyboard: true
+          keyboard: false
         },
         nodes: {
           shape: "dot",
@@ -647,6 +785,245 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     let selectedNodeId = ORIGINAL_ROOT;
     let currentLevels = {};
     let activeNodeIds = new Set();
+    let graphDirectoryHandle = null;
+    const createChildDialogEl = document.getElementById("createChildDialog");
+    const createChildFormEl = document.getElementById("createChildForm");
+    const createChildStatusEl = document.getElementById("createChildStatus");
+
+    function setCreateChildStatus(message, kind = "error") {
+      createChildStatusEl.textContent = message || "";
+      createChildStatusEl.className = "status-box" + (message ? ` ${kind}` : "");
+    }
+
+    function closeCreateChildDialog() {
+      setCreateChildStatus("");
+      createChildDialogEl.close();
+    }
+
+    function sanitizeFileName(name) {
+      const value = String(name || "").trim();
+      if (!value) {
+        throw new Error("File names cannot be empty.");
+      }
+      if (!/^[A-Za-z0-9._-]+$/.test(value)) {
+        throw new Error("File names may only contain letters, numbers, dot, underscore, and hyphen.");
+      }
+      if (!value.toLowerCase().endsWith(".md")) {
+        throw new Error("File names must end with .md.");
+      }
+      if (value === "." || value === "..") {
+        throw new Error("Invalid file name.");
+      }
+      return value;
+    }
+
+    function normalizeText(text) {
+      return String(text || "").replace(/\s+/g, " ").trim();
+    }
+
+    function buildSourceMarkdown(nodeTitle, summaryFileName, relationLabel, parentTitle) {
+      return `# ${nodeTitle}
+
+## Type
+concept
+
+## Domain
+general
+
+## Summary
+${summaryFileName}
+
+---
+
+## Relationships
+`;
+    }
+
+    async function ensureGraphDirectoryHandle() {
+      if (!window.showDirectoryPicker) {
+        throw new Error("This browser does not support directory write access for local files.");
+      }
+      if (graphDirectoryHandle) {
+        return graphDirectoryHandle;
+      }
+      graphDirectoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+      return graphDirectoryHandle;
+    }
+
+    async function getParentDirectoryHandleOfGraphDir() {
+      const chosenHandle = await ensureGraphDirectoryHandle();
+      if (!window.location.pathname) {
+        throw new Error("Cannot determine the HTML file location.");
+      }
+      const htmlName = decodeURIComponent(window.location.pathname.split("/").pop() || "graph.html");
+      const dirName = decodeURIComponent(window.location.pathname.split("/").filter(Boolean).slice(-2, -1)[0] || "");
+      if (dirName && chosenHandle.name !== dirName) {
+        throw new Error(`Please choose the folder that contains ${htmlName}. Expected folder name: ${dirName}.`);
+      }
+      const parentPathParts = window.location.pathname.split("/").filter(Boolean).slice(0, -2);
+      let currentHandle = chosenHandle;
+      if (!parentPathParts.length) {
+        throw new Error("Cannot determine the parent folder for the HTML file.");
+      }
+      const parentName = decodeURIComponent(parentPathParts[parentPathParts.length - 1]);
+      const parentHandle = await currentHandle.resolve ? null : null;
+      throw new Error("Automatic discovery of the parent folder is not supported by the browser API. Please pick the parent folder of the HTML folder when prompted.");
+    }
+
+    async function pickParentDirectoryHandle() {
+      if (!window.showDirectoryPicker) {
+        throw new Error("This browser does not support directory write access for local files.");
+      }
+      return await window.showDirectoryPicker({ mode: "readwrite" });
+    }
+
+    function renumberOutgoingEdges(parentId) {
+      const ordered = (children[parentId] || []).slice();
+      ordered.forEach((childId, index) => {
+        const edgeId = `${parentId}->${childId}`;
+        const edge = edges.get(edgeId);
+        if (!edge) return;
+        const relation = edge.relation || edge.label || "";
+        edges.update({
+          id: edgeId,
+          order: index + 1,
+          label: `${relation} [${index + 1}]`,
+          full_label: `${relation} [${index + 1}]`,
+          title: `${parentId} → ${childId}<br>relation: ${relation}<br>order: ${index + 1}`
+        });
+      });
+    }
+
+    function insertChildAtOrder(parentId, childId, requestedOrder) {
+      const siblings = (children[parentId] || []).slice();
+      const boundedOrder = Math.max(1, Math.min(requestedOrder, siblings.length + 1));
+      siblings.splice(boundedOrder - 1, 0, childId);
+      children[parentId] = siblings;
+      renumberOutgoingEdges(parentId);
+      return boundedOrder;
+    }
+
+    function updateParentDegrees(parentId) {
+      const node = nodeMap.get(parentId);
+      if (!node) return;
+      node.out_degree = (children[parentId] || []).length;
+      nodes.update({ id: parentId, out_degree: node.out_degree });
+    }
+
+    function openCreateChildDialog() {
+      if (!selectedNodeId || !nodeMap.has(selectedNodeId)) {
+        window.alert("Select a parent node first.");
+        return;
+      }
+      const parent = nodeMap.get(selectedNodeId);
+      document.getElementById("childParentNode").value = parent.full_label || parent.id;
+      document.getElementById("childNodeTitle").value = "";
+      document.getElementById("childEdgeRelation").value = "";
+      document.getElementById("childEdgeOrder").value = String((children[selectedNodeId] || []).length + 1);
+      document.getElementById("childSourceFile").value = "";
+      document.getElementById("childSummaryFile").value = "";
+      document.getElementById("childSummaryContent").value = "";
+      setCreateChildStatus("");
+      createChildDialogEl.showModal();
+      setTimeout(() => {
+        const titleInput = document.getElementById("childNodeTitle");
+        if (titleInput) {
+          titleInput.focus();
+        }
+      }, 0);
+    }
+
+    async function createChildNodeFromForm(event) {
+      event.preventDefault();
+      try {
+        const parentId = selectedNodeId;
+        if (!parentId || !nodeMap.has(parentId)) {
+          throw new Error("Select a valid parent node first.");
+        }
+
+        const nodeTitle = normalizeText(document.getElementById("childNodeTitle").value);
+        const relation = normalizeText(document.getElementById("childEdgeRelation").value);
+        const requestedOrder = Number(document.getElementById("childEdgeOrder").value);
+        const sourceFileName = sanitizeFileName(document.getElementById("childSourceFile").value);
+        const summaryFileName = sanitizeFileName(document.getElementById("childSummaryFile").value);
+        const summaryContent = document.getElementById("childSummaryContent").value.replace(/\r?\n/g, "\n").trim();
+
+        if (!nodeTitle) throw new Error("Child node title cannot be empty.");
+        if (!relation) throw new Error("Edge relation cannot be empty.");
+        if (!Number.isInteger(requestedOrder) || requestedOrder < 1) throw new Error("Edge order must be a positive integer.");
+        if (!summaryContent) throw new Error("Summary markdown content cannot be empty.");
+        if (nodeMap.has(nodeTitle)) throw new Error("A node with this title already exists.");
+        if (sourceFileName === summaryFileName) throw new Error("Source file name and summary file name must be different.");
+
+        const chosenParentHandle = await pickParentDirectoryHandle();
+        const sourceExists = await chosenParentHandle.getFileHandle(sourceFileName).then(() => true).catch(() => false);
+        if (sourceExists) throw new Error(`File ${sourceFileName} already exists. Stopping without changes.`);
+        const summaryExists = await chosenParentHandle.getFileHandle(summaryFileName).then(() => true).catch(() => false);
+        if (summaryExists) throw new Error(`File ${summaryFileName} already exists. Stopping without changes.`);
+
+        const sourceHandle = await chosenParentHandle.getFileHandle(sourceFileName, { create: true });
+        const summaryHandle = await chosenParentHandle.getFileHandle(summaryFileName, { create: true });
+
+        const sourceWritable = await sourceHandle.createWritable();
+        await sourceWritable.write(buildSourceMarkdown(nodeTitle, summaryFileName, relation, parentId));
+        await sourceWritable.close();
+
+        const summaryWritable = await summaryHandle.createWritable();
+        await summaryWritable.write(summaryContent + "\n");
+        await summaryWritable.close();
+
+        const parentNode = nodeMap.get(parentId);
+        const childLevel = (parentNode?.level || 0) + 1;
+        const childShortLabel = nodeTitle.length <= 24 ? nodeTitle : nodeTitle.slice(0, 23).trimEnd() + "…";
+        const newNode = {
+          id: nodeTitle,
+          label: childShortLabel,
+          full_label: nodeTitle,
+          short_label: childShortLabel,
+          title: nodeTitle,
+          level: childLevel,
+          source_file: sourceFileName,
+          source_path: sourceFileName,
+          summary_file: summaryFileName,
+          summary_lines: summaryContent.split("\n"),
+          in_degree: 1,
+          out_degree: 0,
+          x: (parentNode?.x || 0) + 260,
+          y: (parentNode?.y || 0) + 170
+        };
+
+        nodeMap.set(nodeTitle, newNode);
+        const actualOrder = insertChildAtOrder(parentId, nodeTitle, requestedOrder);
+        const newEdge = {
+          id: `${parentId}->${nodeTitle}`,
+          from: parentId,
+          to: nodeTitle,
+          relation: relation,
+          order: actualOrder,
+          label: `${relation} [${actualOrder}]`,
+          full_label: `${relation} [${actualOrder}]`,
+          title: `${parentId} → ${nodeTitle}<br>relation: ${relation}<br>order: ${actualOrder}`,
+          base_color: "#848484",
+          incoming_color: "#2563eb",
+          outgoing_color: "#dc2626"
+        };
+        edgesData.push(newEdge);
+        activeNodeIds.add(nodeTitle);
+        currentLevels[nodeTitle] = childLevel;
+        expandedNodes.add(parentId);
+        updateParentDegrees(parentId);
+
+        updateVisibleNodes();
+        syncEdges();
+        selectedNodeId = nodeTitle;
+        renderDetails(nodeTitle);
+        relayout(true);
+        setCreateChildStatus(`Created ${sourceFileName} and ${summaryFileName}.`, "success");
+      } catch (error) {
+        setCreateChildStatus(error.message || String(error), "error");
+      }
+    }
+
 
     function refreshNodeLabels() {
       const updates = nodes.getIds().map(id => {
@@ -1317,8 +1694,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       const directChildren = (children[id] || []).filter(child => activeNodeIds.has(child));
       if (!directChildren.length) return;
 
-      const hasVisibleChild = directChildren.some(child => nodes.get(child));
-      if (hasVisibleChild) {
+      if (expandedNodes.has(id)) {
         hideSubtree(id);
       } else {
         expandOneLevel(id);
@@ -1480,9 +1856,9 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
 
       if (!shiftKey) {
         const directChildren = (children[nodeId] || []).filter(child => activeNodeIds.has(child));
-        const hasVisibleChild = directChildren.some(child => nodes.get(child));
+        const nodeIsExpanded = expandedNodes.has(nodeId);
 
-        if (wasSelectedBeforeClick && hasVisibleChild) {
+        if (wasSelectedBeforeClick && directChildren.length && nodeIsExpanded) {
           hideSubtree(nodeId);
         } else {
           expandOneLevel(nodeId);
@@ -1511,6 +1887,17 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       }
     });
 
+    createChildDialogEl.addEventListener("close", function() {
+      setCreateChildStatus("");
+    });
+
+    createChildDialogEl.querySelectorAll("input, textarea, button, select").forEach(function(el) {
+      el.addEventListener("keydown", function(event) {
+        event.stopPropagation();
+      });
+    });
+
+    createChildFormEl.addEventListener("submit", createChildNodeFromForm);
     installSplitter();
     initFromRoot(ORIGINAL_ROOT);
   </script>
