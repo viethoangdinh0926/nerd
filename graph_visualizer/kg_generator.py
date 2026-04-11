@@ -800,6 +800,35 @@ Write markdown here..." required></textarea>
       createChildDialogEl.close();
     }
 
+    function preventGraphKeyCapture(el) {
+      if (!el) return;
+      el.addEventListener("keydown", function(event) {
+        event.stopPropagation();
+      });
+      el.addEventListener("keyup", function(event) {
+        event.stopPropagation();
+      });
+      el.addEventListener("keypress", function(event) {
+        event.stopPropagation();
+      });
+    }
+
+    function installCreateChildFieldGuards() {
+      const guardedSelectors = [
+        "#childParentNode",
+        "#childNodeTitle",
+        "#childEdgeRelation",
+        "#childEdgeOrder",
+        "#childSourceFile",
+        "#childSummaryFile",
+        "#childSummaryContent"
+      ];
+
+      for (const selector of guardedSelectors) {
+        preventGraphKeyCapture(document.querySelector(selector));
+      }
+    }
+
     function sanitizeFileName(name) {
       const value = String(name || "").trim();
       if (!value) {
@@ -839,42 +868,106 @@ ${summaryFileName}
 `;
     }
 
-    async function ensureGraphDirectoryHandle() {
-      if (!window.showDirectoryPicker) {
-        throw new Error("This browser does not support directory write access for local files.");
-      }
-      if (graphDirectoryHandle) {
-        return graphDirectoryHandle;
-      }
-      graphDirectoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
-      return graphDirectoryHandle;
-    }
-
-    async function getParentDirectoryHandleOfGraphDir() {
-      const chosenHandle = await ensureGraphDirectoryHandle();
-      if (!window.location.pathname) {
-        throw new Error("Cannot determine the HTML file location.");
-      }
-      const htmlName = decodeURIComponent(window.location.pathname.split("/").pop() || "graph.html");
-      const dirName = decodeURIComponent(window.location.pathname.split("/").filter(Boolean).slice(-2, -1)[0] || "");
-      if (dirName && chosenHandle.name !== dirName) {
-        throw new Error(`Please choose the folder that contains ${htmlName}. Expected folder name: ${dirName}.`);
-      }
-      const parentPathParts = window.location.pathname.split("/").filter(Boolean).slice(0, -2);
-      let currentHandle = chosenHandle;
-      if (!parentPathParts.length) {
-        throw new Error("Cannot determine the parent folder for the HTML file.");
-      }
-      const parentName = decodeURIComponent(parentPathParts[parentPathParts.length - 1]);
-      const parentHandle = await currentHandle.resolve ? null : null;
-      throw new Error("Automatic discovery of the parent folder is not supported by the browser API. Please pick the parent folder of the HTML folder when prompted.");
-    }
-
     async function pickParentDirectoryHandle() {
       if (!window.showDirectoryPicker) {
         throw new Error("This browser does not support directory write access for local files.");
       }
       return await window.showDirectoryPicker({ mode: "readwrite" });
+    }
+
+    async function fileExists(dirHandle, fileName) {
+      try {
+        await dirHandle.getFileHandle(fileName);
+        return true;
+      } catch (error) {
+        if (error && error.name === "NotFoundError") {
+          return false;
+        }
+        throw error;
+      }
+    }
+
+    async function readTextFile(handle) {
+      const file = await handle.getFile();
+      return await file.text();
+    }
+
+    async function writeTextFile(handle, content) {
+      const writable = await handle.createWritable();
+      await writable.write(content);
+      await writable.close();
+    }
+
+    function buildRelationshipLine(parentId, childId, order) {
+      const edgeId = `${parentId}->${childId}`;
+      const edge = edges.get(edgeId) || edgesData.find(item => item.id === edgeId);
+      if (!edge) {
+        throw new Error(`Missing edge data for ${parentId} -> ${childId}.`);
+      }
+      const relation = normalizeText(edge.relation || edge.label || "");
+      if (!relation) {
+        throw new Error(`Missing relation text for edge ${parentId} -> ${childId}.`);
+      }
+      return `- ${relation} -> ${childId}`;
+    }
+
+    function buildOrderedRelationshipLines(parentId) {
+      const orderedChildren = (children[parentId] || []).slice();
+      return orderedChildren.map((childId, index) => buildRelationshipLine(parentId, childId, index + 1));
+    }
+
+    function updateRelationshipsSectionInMarkdown(markdownText, relationshipLines) {
+      const normalized = String(markdownText || "").replace(/\r\n/g, "\n");
+      const lines = normalized.split("\n");
+      const headingIndex = lines.findIndex(line => line.trim().toLowerCase() === "## relationships");
+
+      if (headingIndex === -1) {
+        throw new Error("Parent source file does not contain a '## Relationships' section.");
+      }
+
+      let sectionEnd = lines.length;
+      for (let i = headingIndex + 1; i < lines.length; i++) {
+        if (/^##\s+/.test(lines[i])) {
+          sectionEnd = i;
+          break;
+        }
+      }
+
+      const trailingSections = lines.slice(sectionEnd);
+      while (trailingSections.length && trailingSections[0].trim() === "") {
+        trailingSections.shift();
+      }
+
+      const replacement = ["## Relationships"];
+      if (relationshipLines.length) {
+        replacement.push(...relationshipLines);
+      }
+
+      if (trailingSections.length) {
+        replacement.push("", ...trailingSections);
+      }
+
+      const updatedLines = [
+        ...lines.slice(0, headingIndex),
+        ...replacement
+      ];
+
+      return updatedLines.join("\n").replace(/\n*$/, "\n");
+    }
+
+    function removeInsertedChildState(parentId, childId, edgeId) {
+      nodeMap.delete(childId);
+      children[parentId] = (children[parentId] || []).filter(id => id !== childId);
+      edges.remove(edgeId);
+      const edgeIndex = edgesData.findIndex(item => item.id === edgeId);
+      if (edgeIndex !== -1) {
+        edgesData.splice(edgeIndex, 1);
+      }
+      delete currentLevels[childId];
+      activeNodeIds.delete(childId);
+      expandedNodes.delete(childId);
+      renumberOutgoingEdges(parentId);
+      updateParentDegrees(parentId);
     }
 
     function renumberOutgoingEdges(parentId) {
@@ -892,6 +985,17 @@ ${summaryFileName}
           title: `${parentId} → ${childId}<br>relation: ${relation}<br>order: ${index + 1}`
         });
       });
+
+      for (let i = 0; i < edgesData.length; i++) {
+        const edge = edgesData[i];
+        if (edge.from !== parentId) continue;
+        const newOrder = ordered.indexOf(edge.to);
+        if (newOrder === -1) continue;
+        edge.order = newOrder + 1;
+        edge.label = `${edge.relation} [${edge.order}]`;
+        edge.full_label = edge.label;
+        edge.title = `${parentId} → ${edge.to}<br>relation: ${edge.relation}<br>order: ${edge.order}`;
+      }
     }
 
     function insertChildAtOrder(parentId, childId, requestedOrder) {
@@ -955,24 +1059,23 @@ ${summaryFileName}
         if (nodeMap.has(nodeTitle)) throw new Error("A node with this title already exists.");
         if (sourceFileName === summaryFileName) throw new Error("Source file name and summary file name must be different.");
 
-        const chosenParentHandle = await pickParentDirectoryHandle();
-        const sourceExists = await chosenParentHandle.getFileHandle(sourceFileName).then(() => true).catch(() => false);
-        if (sourceExists) throw new Error(`File ${sourceFileName} already exists. Stopping without changes.`);
-        const summaryExists = await chosenParentHandle.getFileHandle(summaryFileName).then(() => true).catch(() => false);
-        if (summaryExists) throw new Error(`File ${summaryFileName} already exists. Stopping without changes.`);
-
-        const sourceHandle = await chosenParentHandle.getFileHandle(sourceFileName, { create: true });
-        const summaryHandle = await chosenParentHandle.getFileHandle(summaryFileName, { create: true });
-
-        const sourceWritable = await sourceHandle.createWritable();
-        await sourceWritable.write(buildSourceMarkdown(nodeTitle, summaryFileName, relation, parentId));
-        await sourceWritable.close();
-
-        const summaryWritable = await summaryHandle.createWritable();
-        await summaryWritable.write(summaryContent + "\n");
-        await summaryWritable.close();
-
         const parentNode = nodeMap.get(parentId);
+        const parentSourceFile = sanitizeFileName(parentNode?.source_file || "");
+        const chosenParentHandle = await pickParentDirectoryHandle();
+
+        if (await fileExists(chosenParentHandle, sourceFileName)) {
+          throw new Error(`File ${sourceFileName} already exists. Stopping without changes.`);
+        }
+        if (await fileExists(chosenParentHandle, summaryFileName)) {
+          throw new Error(`File ${summaryFileName} already exists. Stopping without changes.`);
+        }
+        if (!(await fileExists(chosenParentHandle, parentSourceFile))) {
+          throw new Error(`Parent source file ${parentSourceFile} was not found in the selected folder. Stopping without changes.`);
+        }
+
+        const parentSourceHandle = await chosenParentHandle.getFileHandle(parentSourceFile);
+        const originalParentSourceText = await readTextFile(parentSourceHandle);
+
         const childLevel = (parentNode?.level || 0) + 1;
         const childShortLabel = nodeTitle.length <= 24 ? nodeTitle : nodeTitle.slice(0, 23).trimEnd() + "…";
         const newNode = {
@@ -1008,22 +1111,47 @@ ${summaryFileName}
           outgoing_color: "#dc2626"
         };
         edgesData.push(newEdge);
+        edges.add(newEdge);
+        renumberOutgoingEdges(parentId);
+        updateParentDegrees(parentId);
+
+        let updatedParentSourceText = "";
+        try {
+          updatedParentSourceText = updateRelationshipsSectionInMarkdown(
+            originalParentSourceText,
+            buildOrderedRelationshipLines(parentId)
+          );
+        } catch (error) {
+          removeInsertedChildState(parentId, nodeTitle, newEdge.id);
+          throw error;
+        }
+
+        try {
+          const sourceHandle = await chosenParentHandle.getFileHandle(sourceFileName, { create: true });
+          const summaryHandle = await chosenParentHandle.getFileHandle(summaryFileName, { create: true });
+
+          await writeTextFile(sourceHandle, buildSourceMarkdown(nodeTitle, summaryFileName, relation, parentId));
+          await writeTextFile(summaryHandle, summaryContent + "\n");
+          await writeTextFile(parentSourceHandle, updatedParentSourceText);
+        } catch (error) {
+          removeInsertedChildState(parentId, nodeTitle, newEdge.id);
+          throw error;
+        }
+
         activeNodeIds.add(nodeTitle);
         currentLevels[nodeTitle] = childLevel;
         expandedNodes.add(parentId);
-        updateParentDegrees(parentId);
 
         updateVisibleNodes();
         syncEdges();
         selectedNodeId = nodeTitle;
         renderDetails(nodeTitle);
         relayout(true);
-        setCreateChildStatus(`Created ${sourceFileName} and ${summaryFileName}.`, "success");
+        setCreateChildStatus(`Created ${sourceFileName} and ${summaryFileName}, and updated ${parentSourceFile}.`, "success");
       } catch (error) {
         setCreateChildStatus(error.message || String(error), "error");
       }
     }
-
 
     function refreshNodeLabels() {
       const updates = nodes.getIds().map(id => {
@@ -1856,12 +1984,13 @@ ${summaryFileName}
 
       if (!shiftKey) {
         const directChildren = (children[nodeId] || []).filter(child => activeNodeIds.has(child));
-        const nodeIsExpanded = expandedNodes.has(nodeId);
 
-        if (wasSelectedBeforeClick && directChildren.length && nodeIsExpanded) {
-          hideSubtree(nodeId);
-        } else {
-          expandOneLevel(nodeId);
+        if (directChildren.length) {
+          if (wasSelectedBeforeClick && expandedNodes.has(nodeId)) {
+            hideSubtree(nodeId);
+          } else {
+            expandOneLevel(nodeId);
+          }
         }
       }
 
@@ -1887,16 +2016,7 @@ ${summaryFileName}
       }
     });
 
-    createChildDialogEl.addEventListener("close", function() {
-      setCreateChildStatus("");
-    });
-
-    createChildDialogEl.querySelectorAll("input, textarea, button, select").forEach(function(el) {
-      el.addEventListener("keydown", function(event) {
-        event.stopPropagation();
-      });
-    });
-
+    installCreateChildFieldGuards();
     createChildFormEl.addEventListener("submit", createChildNodeFromForm);
     installSplitter();
     initFromRoot(ORIGINAL_ROOT);
