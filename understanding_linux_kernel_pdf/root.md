@@ -4,6 +4,7 @@
 root_summary.md
 
 ## Relationships
+- '' -> Kernel space layout
 - next -> Hardware Interface
 - next -> Core Kernel
 - next -> Memory System
