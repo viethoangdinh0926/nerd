@@ -1,4 +1,4 @@
-# vmemmap
+# data structures live here
 
 ## Type
 concept
@@ -7,9 +7,8 @@ concept
 general
 
 ## Summary
-vmemmap_summary.md
+kernel_image_data_structures_summary.md
 
 ---
 
 ## Relationships
-- '' -> huge pages optimize vmemmap usage

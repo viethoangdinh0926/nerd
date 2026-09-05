@@ -1,4 +1,4 @@
-# Kernel image
+# kernel image
 
 ## Type
 concept
@@ -12,3 +12,4 @@ kernel_image_summary.md
 ---
 
 ## Relationships
+- '' -> data structures live here

@@ -12,3 +12,5 @@ physmap_summary.md
 ---
 
 ## Relationships
+- '' -> buddy allocator works with physmap
+- '' -> NUMA and physmap

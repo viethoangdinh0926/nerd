@@ -1,4 +1,4 @@
-# vmemmap
+# NUMA and physmap
 
 ## Type
 concept
@@ -7,9 +7,8 @@ concept
 general
 
 ## Summary
-vmemmap_summary.md
+numa_and_physmap_summary.md
 
 ---
 
 ## Relationships
-- '' -> huge pages optimize vmemmap usage

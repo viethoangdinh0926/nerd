@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 
 import argparse
+import http.server
 import json
 import re
+import socketserver
 from collections import deque
+from functools import partial
 from pathlib import Path
 
 import networkx as nx
@@ -220,7 +223,15 @@ def sanitize_graphml(graph: nx.DiGraph):
 
     for node, attrs in graph.nodes(data=True):
         clean_attrs = {}
+        summary_lines = attrs.get("summary_lines")
+        if isinstance(summary_lines, list):
+            clean_attrs["summary"] = "\n".join(str(line) for line in summary_lines)
+        elif attrs.get("summary") is not None:
+            clean_attrs["summary"] = str(attrs.get("summary"))
+
         for k, v in attrs.items():
+            if k in {"summary_lines", "summary", "source_path"}:
+                continue
             if isinstance(v, (str, int, float, bool)):
                 clean_attrs[k] = v
             elif v is not None:
@@ -548,6 +559,46 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     button:hover {
       background: #f2f2f2;
     }
+    button.danger {
+      border-color: #f1a0a0;
+      color: #991b1b;
+    }
+    button.danger:hover {
+      background: #fef2f2;
+    }
+    button.btn-cancel {
+      border-color: #dc2626;
+      background: #dc2626;
+      color: #fff;
+    }
+    button.btn-cancel:hover {
+      background: #b91c1c;
+    }
+    button.btn-save {
+      border-color: #2563eb;
+      background: #2563eb;
+      color: #fff;
+    }
+    button.btn-save:hover {
+      background: #1d4ed8;
+    }
+    .app-notice {
+      display: none;
+      padding: 10px 14px;
+      border-bottom: 1px solid #a7f3d0;
+      background: #ecfdf5;
+      color: #065f46;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .app-notice.visible {
+      display: block;
+    }
+    .app-notice.error {
+      background: #fef2f2;
+      border-bottom-color: #fecaca;
+      color: #991b1b;
+    }
     .hint {
       color: #555;
       font-size: 14px;
@@ -584,19 +635,28 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       gap: 10px;
       margin-top: 14px;
     }
-    dialog {
-      border: 1px solid #ccc;
-      border-radius: 14px;
-      padding: 0;
-      width: min(720px, 92vw);
-      box-shadow: 0 18px 50px rgba(0,0,0,0.2);
-    }
-    dialog::backdrop {
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
       background: rgba(0,0,0,0.35);
+    }
+    .modal-overlay.open {
+      display: flex;
     }
     .dialog-card {
       padding: 18px;
       background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 14px;
+      width: min(720px, 92vw);
+      max-height: calc(100vh - 48px);
+      overflow: auto;
+      box-shadow: 0 18px 50px rgba(0,0,0,0.2);
     }
     .dialog-title {
       margin: 0 0 12px 0;
@@ -643,8 +703,11 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     <button onclick="restoreOriginalTree()">Restore original tree</button>
     <button onclick="fitGraph()">Fit</button>
     <button onclick="openCreateChildDialog()">Add child node</button>
-    <span class="hint">Click a node to select it. Clicking a node that is not currently in focus expands it. Clicking the same in-focus node again collapses it. The clicked node is highlighted, incoming and outgoing edges use different colors, node labels are shortened by default, and the selected node shows its full name. The graph auto-reorganizes after each click for a clearer layout while keeping children below parents and sibling edge order left-to-right. Shift-click only shows details.</span>
+    <button onclick="openUpdateNodeDialog()">Update node</button>
+    <button class="danger" onclick="openDeleteNodeDialog()">Delete node</button>
+    <span class="hint">Click a node to select it. Clicking a node that is not currently in focus expands it. Clicking the same in-focus node again collapses it. The clicked node is highlighted, incoming and outgoing edges use different colors, node labels are shortened by default, and the selected node shows its full name. The graph auto-reorganizes after each click for a clearer layout while keeping children below parents and sibling edge order left-to-right. Shift-click only shows details. Update node can change any selected node. The original root can only change title and summary. Delete applies only to a selected non-root node.</span>
   </div>
+  <div id="appNotice" class="app-notice" hidden></div>
 
   <div id="main">
     <div id="net"></div>
@@ -658,11 +721,11 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
   </div>
 
 
-  <dialog id="createChildDialog">
+  <div id="createChildDialog" class="modal-overlay">
     <div class="dialog-card">
       <h3 class="dialog-title">Add child node</h3>
-      <div class="dialog-help">Select a parent node first. In Chromium-based browsers, this can create the new source and summary markdown files inside the parent directory of the folder containing this HTML file, after you grant access to that folder tree.</div>
-      <form id="createChildForm" class="form-grid" method="dialog">
+      <div class="dialog-help">Select a parent node first. Choose source and summary markdown file names that are not already used in graph.graphml. Saving updates graph.graphml only.</div>
+      <form id="createChildForm" class="form-grid">
         <label>Parent node
           <input id="childParentNode" name="parentNode" type="text" readonly>
         </label>
@@ -687,16 +750,56 @@ Write markdown here..." required></textarea>
         </label>
         <div class="dialog-actions">
           <button type="button" onclick="closeCreateChildDialog()">Cancel</button>
-          <button type="submit">Create child</button>
+          <button type="button" id="createChildSaveButton">Create child</button>
         </div>
         <div id="createChildStatus" class="status-box"></div>
       </form>
     </div>
-  </dialog>
+  </div>
+
+  <div id="updateNodeDialog" class="modal-overlay">
+    <div class="dialog-card">
+      <h3 class="dialog-title">Update node</h3>
+      <div class="dialog-help" id="updateNodeHelp">Select a node first. Non-root nodes can change title, incoming edge label, sibling order, and summary markdown. The original root can only change title and summary. An invalid edge order places a non-root node at the end of its parent's children. Saving updates graph.graphml only.</div>
+      <form id="updateNodeForm" class="form-grid">
+        <label id="updateParentField">Parent node
+          <input id="updateParentNode" name="parentNode" type="text" readonly>
+        </label>
+        <label>Node title
+          <input id="updateNodeTitle" name="nodeTitle" type="text" required>
+        </label>
+        <label id="updateRelationField">Edge relation label
+          <input id="updateEdgeRelation" name="edgeRelation" type="text">
+        </label>
+        <label id="updateOrderField">Edge order among parent outgoing edges
+          <input id="updateEdgeOrder" name="edgeOrder" type="text" placeholder="1">
+        </label>
+        <label>Summary markdown content
+          <textarea id="updateSummaryContent" name="summaryContent" required></textarea>
+        </label>
+        <div class="dialog-actions">
+          <button type="button" class="btn-cancel" onclick="closeUpdateNodeDialog()">Cancel</button>
+          <button type="button" class="btn-save" id="updateNodeSaveButton">Save changes</button>
+        </div>
+        <div id="updateNodeStatus" class="status-box"></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="deleteNodeDialog" class="modal-overlay">
+    <div class="dialog-card">
+      <h3 class="dialog-title">Delete node</h3>
+      <div id="deleteNodeMessage" class="dialog-help"></div>
+      <div class="dialog-actions">
+        <button type="button" onclick="closeDeleteNodeDialog()">Cancel</button>
+        <button type="button" class="danger" id="deleteNodeConfirmButton">Delete</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     const ROOT = __ROOT__;
-    const ORIGINAL_ROOT = ROOT;
+    let ORIGINAL_ROOT = ROOT;
     const INIT_DEPTH = __DEPTH__;
     const nodesData = __NODES__;
     const edgesData = __EDGES__;
@@ -785,19 +888,53 @@ Write markdown here..." required></textarea>
     let selectedNodeId = ORIGINAL_ROOT;
     let currentLevels = {};
     let activeNodeIds = new Set();
-    let graphDirectoryHandle = null;
     const createChildDialogEl = document.getElementById("createChildDialog");
     const createChildFormEl = document.getElementById("createChildForm");
     const createChildStatusEl = document.getElementById("createChildStatus");
+    const updateNodeDialogEl = document.getElementById("updateNodeDialog");
+    const updateNodeFormEl = document.getElementById("updateNodeForm");
+    const updateNodeStatusEl = document.getElementById("updateNodeStatus");
+    const deleteNodeDialogEl = document.getElementById("deleteNodeDialog");
+    const deleteNodeMessageEl = document.getElementById("deleteNodeMessage");
 
     function setCreateChildStatus(message, kind = "error") {
       createChildStatusEl.textContent = message || "";
       createChildStatusEl.className = "status-box" + (message ? ` ${kind}` : "");
     }
 
+    function setUpdateNodeStatus(message, kind = "error") {
+      updateNodeStatusEl.textContent = message || "";
+      updateNodeStatusEl.className = "status-box" + (message ? ` ${kind}` : "");
+    }
+
+    function notifyMainUi(message, kind = "success") {
+      const noticeEl = document.getElementById("appNotice");
+      if (!noticeEl) return;
+      noticeEl.hidden = !message;
+      noticeEl.textContent = message || "";
+      noticeEl.className = "app-notice" + (message ? ` visible${kind === "error" ? " error" : ""}` : "");
+    }
+
+    function openOverlay(el) {
+      el.classList.add("open");
+    }
+
+    function closeOverlay(el) {
+      el.classList.remove("open");
+    }
+
     function closeCreateChildDialog() {
       setCreateChildStatus("");
-      createChildDialogEl.close();
+      closeOverlay(createChildDialogEl);
+    }
+
+    function closeUpdateNodeDialog() {
+      setUpdateNodeStatus("");
+      closeOverlay(updateNodeDialogEl);
+    }
+
+    function closeDeleteNodeDialog() {
+      closeOverlay(deleteNodeDialogEl);
     }
 
     function preventGraphKeyCapture(el) {
@@ -813,7 +950,7 @@ Write markdown here..." required></textarea>
       });
     }
 
-    function installCreateChildFieldGuards() {
+    function installDialogFieldGuards() {
       const guardedSelectors = [
         "#childParentNode",
         "#childNodeTitle",
@@ -821,7 +958,12 @@ Write markdown here..." required></textarea>
         "#childEdgeOrder",
         "#childSourceFile",
         "#childSummaryFile",
-        "#childSummaryContent"
+        "#childSummaryContent",
+        "#updateParentNode",
+        "#updateNodeTitle",
+        "#updateEdgeRelation",
+        "#updateEdgeOrder",
+        "#updateSummaryContent"
       ];
 
       for (const selector of guardedSelectors) {
@@ -829,130 +971,138 @@ Write markdown here..." required></textarea>
       }
     }
 
-    function sanitizeFileName(name) {
-      const value = String(name || "").trim();
-      if (!value) {
-        throw new Error("File names cannot be empty.");
-      }
-      if (!/^[A-Za-z0-9._-]+$/.test(value)) {
-        throw new Error("File names may only contain letters, numbers, dot, underscore, and hyphen.");
-      }
-      if (!value.toLowerCase().endsWith(".md")) {
-        throw new Error("File names must end with .md.");
-      }
-      if (value === "." || value === "..") {
-        throw new Error("Invalid file name.");
-      }
-      return value;
-    }
-
     function normalizeText(text) {
       return String(text || "").replace(/\s+/g, " ").trim();
     }
 
-    function buildSourceMarkdown(nodeTitle, summaryFileName, relationLabel, parentTitle) {
-      return `# ${nodeTitle}
-
-## Type
-concept
-
-## Domain
-general
-
-## Summary
-${summaryFileName}
-
----
-
-## Relationships
-`;
+    function slugifyFilename(title) {
+      const slug = String(title || "").trim().replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^[._]+|[._]+$/g, "");
+      return slug || "node";
     }
 
-    async function pickParentDirectoryHandle() {
-      if (!window.showDirectoryPicker) {
-        throw new Error("This browser does not support directory write access for local files.");
+    function uniqueMarkdownFileName(desired, usedNames) {
+      let name = String(desired || "node.md").trim();
+      if (!name.toLowerCase().endsWith(".md")) {
+        name += ".md";
       }
-      return await window.showDirectoryPicker({ mode: "readwrite" });
+      if (!usedNames.has(name.toLowerCase())) {
+        usedNames.add(name.toLowerCase());
+        return name;
+      }
+      const stem = name.slice(0, -3);
+      let suffix = 2;
+      while (usedNames.has(`${stem}_${suffix}.md`.toLowerCase())) {
+        suffix += 1;
+      }
+      name = `${stem}_${suffix}.md`;
+      usedNames.add(name.toLowerCase());
+      return name;
     }
 
-    async function fileExists(dirHandle, fileName) {
-      try {
-        await dirHandle.getFileHandle(fileName);
-        return true;
-      } catch (error) {
-        if (error && error.name === "NotFoundError") {
-          return false;
-        }
-        throw error;
+    function usedMarkdownFileNames() {
+      const used = new Set();
+      for (const node of nodeMap.values()) {
+        if (node.source_file) used.add(String(node.source_file).toLowerCase());
+        if (node.summary_file) used.add(String(node.summary_file).toLowerCase());
+      }
+      return used;
+    }
+
+    function sanitizeMarkdownFileName(name, label) {
+      const value = String(name || "").trim();
+      if (!value) {
+        throw new Error(`${label} cannot be empty.`);
+      }
+      const base = value.split(/[/\\]/).pop();
+      if (!/^[A-Za-z0-9._-]+$/.test(base)) {
+        throw new Error(`${label} may only contain letters, numbers, dot, underscore, and hyphen.`);
+      }
+      if (!base.toLowerCase().endsWith(".md")) {
+        throw new Error(`${label} must end with .md.`);
+      }
+      if (base === "." || base === "..") {
+        throw new Error(`${label} is not a valid file name.`);
+      }
+      return base;
+    }
+
+    function assertUnusedMarkdownFileName(fileName, usedNames, label) {
+      if (usedNames.has(fileName.toLowerCase())) {
+        throw new Error(`${label} "${fileName}" is already used in graph.graphml.`);
       }
     }
 
-    async function readTextFile(handle) {
-      const file = await handle.getFile();
-      return await file.text();
+    function escapeXml(text) {
+      return String(text ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&apos;");
     }
 
-    async function writeTextFile(handle, content) {
-      const writable = await handle.createWritable();
-      await writable.write(content);
-      await writable.close();
-    }
-
-    function buildRelationshipLine(parentId, childId, order) {
-      const edgeId = `${parentId}->${childId}`;
-      const edge = edges.get(edgeId) || edgesData.find(item => item.id === edgeId);
-      if (!edge) {
-        throw new Error(`Missing edge data for ${parentId} -> ${childId}.`);
-      }
-      const relation = normalizeText(edge.relation || edge.label || "");
-      if (!relation) {
-        throw new Error(`Missing relation text for edge ${parentId} -> ${childId}.`);
-      }
-      return `- ${relation} -> ${childId}`;
-    }
-
-    function buildOrderedRelationshipLines(parentId) {
-      const orderedChildren = (children[parentId] || []).slice();
-      return orderedChildren.map((childId, index) => buildRelationshipLine(parentId, childId, index + 1));
-    }
-
-    function updateRelationshipsSectionInMarkdown(markdownText, relationshipLines) {
-      const normalized = String(markdownText || "").replace(/\r\n/g, "\n");
-      const lines = normalized.split("\n");
-      const headingIndex = lines.findIndex(line => line.trim().toLowerCase() === "## relationships");
-
-      if (headingIndex === -1) {
-        throw new Error("Parent source file does not contain a '## Relationships' section.");
-      }
-
-      let sectionEnd = lines.length;
-      for (let i = headingIndex + 1; i < lines.length; i++) {
-        if (/^##\s+/.test(lines[i])) {
-          sectionEnd = i;
-          break;
-        }
-      }
-
-      const trailingSections = lines.slice(sectionEnd);
-      while (trailingSections.length && trailingSections[0].trim() === "") {
-        trailingSections.shift();
-      }
-
-      const replacement = ["## Relationships"];
-      if (relationshipLines.length) {
-        replacement.push(...relationshipLines);
-      }
-
-      if (trailingSections.length) {
-        replacement.push("", ...trailingSections);
-      }
-
-      const updatedLines = [
-        ...lines.slice(0, headingIndex),
-        ...replacement
+    function buildGraphmlText() {
+      const lines = [
+        "<?xml version='1.0' encoding='utf-8'?>",
+        '<graphml xmlns="http://graphml.graphdrawing.org/xmlns">',
+        '  <key id="d0" for="node" attr.name="source_file" attr.type="string" />',
+        '  <key id="d1" for="node" attr.name="summary_file" attr.type="string" />',
+        '  <key id="d2" for="node" attr.name="summary" attr.type="string" />',
+        '  <key id="d3" for="edge" attr.name="relation" attr.type="string" />',
+        '  <key id="d4" for="edge" attr.name="order" attr.type="long" />',
+        '  <graph edgedefault="directed">'
       ];
 
-      return updatedLines.join("\n").replace(/\n*$/, "\n");
+      for (const [id, node] of nodeMap.entries()) {
+        const summary = (node.summary_lines || []).join("\n");
+        lines.push(`    <node id="${escapeXml(id)}">`);
+        lines.push(`      <data key="d0">${escapeXml(node.source_file || "")}</data>`);
+        lines.push(`      <data key="d1">${escapeXml(node.summary_file || "")}</data>`);
+        lines.push(`      <data key="d2">${escapeXml(summary)}</data>`);
+        lines.push("    </node>");
+      }
+
+      for (const edge of edgesData) {
+        const order = Number.isInteger(edge.order) ? edge.order : -1;
+        lines.push(`    <edge source="${escapeXml(edge.from)}" target="${escapeXml(edge.to)}">`);
+        lines.push(`      <data key="d3">${escapeXml(edge.relation || "")}</data>`);
+        lines.push(`      <data key="d4">${order}</data>`);
+        lines.push("    </edge>");
+      }
+
+      lines.push("  </graph>");
+      lines.push("</graphml>");
+      return lines.join("\n") + "\n";
+    }
+
+    function downloadGraphml(xml) {
+      const blob = new Blob([xml], { type: "application/xml" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "graph.graphml";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function persistGraphml() {
+      const xml = buildGraphmlText();
+      try {
+        const response = await fetch(new URL("graph.graphml", window.location.href), {
+          method: "PUT",
+          headers: { "Content-Type": "application/xml" },
+          body: xml
+        });
+        if (response.ok) {
+          return "saved";
+        }
+      } catch (error) {
+        // file:// pages and static servers cannot overwrite graph.graphml in place
+      }
+      downloadGraphml(xml);
+      return "downloaded";
     }
 
     function removeInsertedChildState(parentId, childId, edgeId) {
@@ -1014,12 +1164,30 @@ ${summaryFileName}
       nodes.update({ id: parentId, out_degree: node.out_degree });
     }
 
+    let childFileNamesEdited = false;
+
+    function suggestChildFileNames() {
+      if (childFileNamesEdited) return;
+      const title = normalizeText(document.getElementById("childNodeTitle").value);
+      const sourceInput = document.getElementById("childSourceFile");
+      const summaryInput = document.getElementById("childSummaryFile");
+      if (!title) {
+        sourceInput.value = "";
+        summaryInput.value = "";
+        return;
+      }
+      const used = usedMarkdownFileNames();
+      sourceInput.value = uniqueMarkdownFileName(`${slugifyFilename(title)}.md`, used);
+      summaryInput.value = uniqueMarkdownFileName(`${slugifyFilename(title)}_summary.md`, used);
+    }
+
     function openCreateChildDialog() {
       if (!selectedNodeId || !nodeMap.has(selectedNodeId)) {
         window.alert("Select a parent node first.");
         return;
       }
       const parent = nodeMap.get(selectedNodeId);
+      childFileNamesEdited = false;
       document.getElementById("childParentNode").value = parent.full_label || parent.id;
       document.getElementById("childNodeTitle").value = "";
       document.getElementById("childEdgeRelation").value = "";
@@ -1028,7 +1196,7 @@ ${summaryFileName}
       document.getElementById("childSummaryFile").value = "";
       document.getElementById("childSummaryContent").value = "";
       setCreateChildStatus("");
-      createChildDialogEl.showModal();
+      openOverlay(createChildDialogEl);
       setTimeout(() => {
         const titleInput = document.getElementById("childNodeTitle");
         if (titleInput) {
@@ -1048,8 +1216,14 @@ ${summaryFileName}
         const nodeTitle = normalizeText(document.getElementById("childNodeTitle").value);
         const relation = normalizeText(document.getElementById("childEdgeRelation").value);
         const requestedOrder = Number(document.getElementById("childEdgeOrder").value);
-        const sourceFileName = sanitizeFileName(document.getElementById("childSourceFile").value);
-        const summaryFileName = sanitizeFileName(document.getElementById("childSummaryFile").value);
+        const sourceFileName = sanitizeMarkdownFileName(
+          document.getElementById("childSourceFile").value,
+          "Source markdown file name"
+        );
+        const summaryFileName = sanitizeMarkdownFileName(
+          document.getElementById("childSummaryFile").value,
+          "Summary markdown file name"
+        );
         const summaryContent = document.getElementById("childSummaryContent").value.replace(/\r?\n/g, "\n").trim();
 
         if (!nodeTitle) throw new Error("Child node title cannot be empty.");
@@ -1057,25 +1231,14 @@ ${summaryFileName}
         if (!Number.isInteger(requestedOrder) || requestedOrder < 1) throw new Error("Edge order must be a positive integer.");
         if (!summaryContent) throw new Error("Summary markdown content cannot be empty.");
         if (nodeMap.has(nodeTitle)) throw new Error("A node with this title already exists.");
-        if (sourceFileName === summaryFileName) throw new Error("Source file name and summary file name must be different.");
+        if (sourceFileName.toLowerCase() === summaryFileName.toLowerCase()) {
+          throw new Error("Source file name and summary file name must be different.");
+        }
 
+        const usedNames = usedMarkdownFileNames();
+        assertUnusedMarkdownFileName(sourceFileName, usedNames, "Source markdown file name");
+        assertUnusedMarkdownFileName(summaryFileName, usedNames, "Summary markdown file name");
         const parentNode = nodeMap.get(parentId);
-        const parentSourceFile = sanitizeFileName(parentNode?.source_file || "");
-        const chosenParentHandle = await pickParentDirectoryHandle();
-
-        if (await fileExists(chosenParentHandle, sourceFileName)) {
-          throw new Error(`File ${sourceFileName} already exists. Stopping without changes.`);
-        }
-        if (await fileExists(chosenParentHandle, summaryFileName)) {
-          throw new Error(`File ${summaryFileName} already exists. Stopping without changes.`);
-        }
-        if (!(await fileExists(chosenParentHandle, parentSourceFile))) {
-          throw new Error(`Parent source file ${parentSourceFile} was not found in the selected folder. Stopping without changes.`);
-        }
-
-        const parentSourceHandle = await chosenParentHandle.getFileHandle(parentSourceFile);
-        const originalParentSourceText = await readTextFile(parentSourceHandle);
-
         const childLevel = (parentNode?.level || 0) + 1;
         const childShortLabel = nodeTitle.length <= 24 ? nodeTitle : nodeTitle.slice(0, 23).trimEnd() + "…";
         const newNode = {
@@ -1086,7 +1249,7 @@ ${summaryFileName}
           title: nodeTitle,
           level: childLevel,
           source_file: sourceFileName,
-          source_path: sourceFileName,
+          source_path: "",
           summary_file: summaryFileName,
           summary_lines: summaryContent.split("\n"),
           in_degree: 1,
@@ -1115,41 +1278,358 @@ ${summaryFileName}
         renumberOutgoingEdges(parentId);
         updateParentDegrees(parentId);
 
-        let updatedParentSourceText = "";
         try {
-          updatedParentSourceText = updateRelationshipsSectionInMarkdown(
-            originalParentSourceText,
-            buildOrderedRelationshipLines(parentId)
+          const persistMode = await persistGraphml();
+          activeNodeIds.add(nodeTitle);
+          currentLevels[nodeTitle] = childLevel;
+          expandedNodes.add(parentId);
+
+          updateVisibleNodes();
+          syncEdges();
+          selectedNodeId = nodeTitle;
+          renderDetails(nodeTitle);
+          relayout(true);
+          setCreateChildStatus(
+            persistMode === "saved"
+              ? `Added ${nodeTitle} and updated graph.graphml.`
+              : `Added ${nodeTitle}. Downloaded updated graph.graphml.`,
+            "success"
           );
         } catch (error) {
           removeInsertedChildState(parentId, nodeTitle, newEdge.id);
           throw error;
         }
-
-        try {
-          const sourceHandle = await chosenParentHandle.getFileHandle(sourceFileName, { create: true });
-          const summaryHandle = await chosenParentHandle.getFileHandle(summaryFileName, { create: true });
-
-          await writeTextFile(sourceHandle, buildSourceMarkdown(nodeTitle, summaryFileName, relation, parentId));
-          await writeTextFile(summaryHandle, summaryContent + "\n");
-          await writeTextFile(parentSourceHandle, updatedParentSourceText);
-        } catch (error) {
-          removeInsertedChildState(parentId, nodeTitle, newEdge.id);
-          throw error;
-        }
-
-        activeNodeIds.add(nodeTitle);
-        currentLevels[nodeTitle] = childLevel;
-        expandedNodes.add(parentId);
-
-        updateVisibleNodes();
-        syncEdges();
-        selectedNodeId = nodeTitle;
-        renderDetails(nodeTitle);
-        relayout(true);
-        setCreateChildStatus(`Created ${sourceFileName} and ${summaryFileName}, and updated ${parentSourceFile}.`, "success");
       } catch (error) {
         setCreateChildStatus(error.message || String(error), "error");
+      }
+    }
+
+    function findParentId(nodeId) {
+      let fallback = null;
+      for (const [parentId, kids] of Object.entries(children)) {
+        if (!(kids || []).includes(nodeId)) continue;
+        if (activeNodeIds.has(parentId)) return parentId;
+        if (fallback === null) fallback = parentId;
+      }
+      return fallback;
+    }
+
+    function assertNonRootSelected() {
+      if (!selectedNodeId || !nodeMap.has(selectedNodeId)) {
+        throw new Error("Select a non-root node first.");
+      }
+      if (selectedNodeId === ORIGINAL_ROOT) {
+        throw new Error("The root node cannot be updated or deleted.");
+      }
+      const parentId = findParentId(selectedNodeId);
+      if (!parentId) {
+        throw new Error("The selected node has no parent, so it cannot be updated or deleted.");
+      }
+      return parentId;
+    }
+
+    function resolveSiblingOrder(rawValue, childCount) {
+      const parsed = Number(String(rawValue ?? "").trim());
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > childCount) {
+        return childCount;
+      }
+      return parsed;
+    }
+
+    function getEdgeRecord(fromId, toId) {
+      const edgeId = `${fromId}->${toId}`;
+      return edges.get(edgeId) || edgesData.find(item => item.id === edgeId) || null;
+    }
+
+    function makeEdgeRecord(fromId, toId, relation, order) {
+      return {
+        id: `${fromId}->${toId}`,
+        from: fromId,
+        to: toId,
+        relation: relation,
+        order: order,
+        label: `${relation} [${order}]`,
+        full_label: `${relation} [${order}]`,
+        title: `${fromId} → ${toId}<br>relation: ${relation}<br>order: ${order}`,
+        base_color: "#848484",
+        incoming_color: "#2563eb",
+        outgoing_color: "#dc2626"
+      };
+    }
+
+    function removeEdgeData(edgeId) {
+      edges.remove(edgeId);
+      const index = edgesData.findIndex(item => item.id === edgeId);
+      if (index !== -1) {
+        edgesData.splice(index, 1);
+      }
+    }
+
+    function renameNodeInMemory(oldId, newId) {
+      if (oldId === newId) return;
+
+      const stored = nodeMap.get(oldId);
+      if (!stored) {
+        throw new Error(`Missing node data for ${oldId}.`);
+      }
+
+      const shortLabel = newId.length <= 24 ? newId : newId.slice(0, 23).trimEnd() + "…";
+      nodeMap.delete(oldId);
+      nodeMap.set(newId, {
+        ...stored,
+        id: newId,
+        label: shortLabel,
+        full_label: newId,
+        short_label: shortLabel,
+        title: newId
+      });
+
+      if (Object.prototype.hasOwnProperty.call(children, oldId)) {
+        children[newId] = children[oldId];
+        delete children[oldId];
+      }
+
+      for (const parentKey of Object.keys(children)) {
+        children[parentKey] = (children[parentKey] || []).map(id => (id === oldId ? newId : id));
+      }
+
+      for (const edge of edgesData) {
+        if (edge.from !== oldId && edge.to !== oldId) continue;
+        if (edge.from === oldId) edge.from = newId;
+        if (edge.to === oldId) edge.to = newId;
+        edge.id = `${edge.from}->${edge.to}`;
+        const order = edge.order;
+        const relation = edge.relation || "";
+        edge.label = order && order !== -1 ? `${relation} [${order}]` : relation;
+        edge.full_label = edge.label;
+        edge.title = `${edge.from} → ${edge.to}<br>relation: ${relation}` + (order && order !== -1 ? `<br>order: ${order}` : "");
+      }
+
+      if (nodes.get(oldId)) {
+        nodes.remove(oldId);
+        nodes.add(nodeMap.get(newId));
+      }
+
+      if (selectedNodeId === oldId) selectedNodeId = newId;
+      if (currentRoot === oldId) currentRoot = newId;
+      if (ORIGINAL_ROOT === oldId) ORIGINAL_ROOT = newId;
+      if (expandedNodes.has(oldId)) {
+        expandedNodes.delete(oldId);
+        expandedNodes.add(newId);
+      }
+      if (activeNodeIds.has(oldId)) {
+        activeNodeIds.delete(oldId);
+        activeNodeIds.add(newId);
+      }
+      if (Object.prototype.hasOwnProperty.call(currentLevels, oldId)) {
+        currentLevels[newId] = currentLevels[oldId];
+        delete currentLevels[oldId];
+      }
+      if (hidden.has(oldId)) {
+        hidden.delete(oldId);
+        hidden.add(newId);
+      }
+    }
+
+    function applyUpdatedNodeInMemory(parentId, oldId, newId, relation, order, summaryLines) {
+      renameNodeInMemory(oldId, newId);
+
+      if (parentId) {
+        const siblings = (children[parentId] || []).filter(id => id !== newId);
+        const boundedOrder = Math.max(1, Math.min(order, siblings.length + 1));
+        siblings.splice(boundedOrder - 1, 0, newId);
+        children[parentId] = siblings;
+
+        const edge = edgesData.find(item => item.from === parentId && item.to === newId);
+        if (edge) {
+          edge.relation = relation;
+        } else {
+          edgesData.push(makeEdgeRecord(parentId, newId, relation, boundedOrder));
+        }
+
+        renumberOutgoingEdges(parentId);
+      }
+
+      const stored = nodeMap.get(newId);
+      if (stored) {
+        stored.summary_lines = summaryLines;
+      }
+    }
+
+    function applyDeletedNodeInMemory(parentId, deletedId) {
+      const parentKids = (children[parentId] || []).filter(id => id !== deletedId);
+      const formerChildren = (children[deletedId] || []).slice();
+      const promoted = formerChildren.filter(id => id !== parentId && !parentKids.includes(id));
+
+      removeEdgeData(`${parentId}->${deletedId}`);
+
+      for (const childId of formerChildren) {
+        const oldEdge = getEdgeRecord(deletedId, childId);
+        removeEdgeData(`${deletedId}->${childId}`);
+
+        if (promoted.includes(childId)) {
+          const relation = normalizeText((oldEdge && oldEdge.relation) || "related");
+          edgesData.push(makeEdgeRecord(parentId, childId, relation, 0));
+        } else {
+          const childNode = nodeMap.get(childId);
+          if (childNode) {
+            childNode.in_degree = Math.max(0, (childNode.in_degree || 1) - 1);
+            if (nodes.get(childId)) {
+              nodes.update({ id: childId, in_degree: childNode.in_degree });
+            }
+          }
+        }
+      }
+
+      children[parentId] = parentKids.concat(promoted);
+      delete children[deletedId];
+
+      nodeMap.delete(deletedId);
+      if (nodes.get(deletedId)) {
+        nodes.remove(deletedId);
+      }
+      hidden.delete(deletedId);
+      expandedNodes.delete(deletedId);
+      activeNodeIds.delete(deletedId);
+      delete currentLevels[deletedId];
+
+      renumberOutgoingEdges(parentId);
+      updateParentDegrees(parentId);
+    }
+
+    function setUpdateEdgeFieldsVisible(visible) {
+      for (const id of ["updateParentField", "updateRelationField", "updateOrderField"]) {
+        const field = document.getElementById(id);
+        if (field) {
+          field.style.display = visible ? "" : "none";
+        }
+      }
+    }
+
+    function openUpdateNodeDialog() {
+      try {
+        if (!selectedNodeId || !nodeMap.has(selectedNodeId)) {
+          throw new Error("Select a node first.");
+        }
+        const parentId = findParentId(selectedNodeId);
+        const isRootUpdate = selectedNodeId === ORIGINAL_ROOT || !parentId;
+        const node = nodeMap.get(selectedNodeId);
+        const parent = parentId ? nodeMap.get(parentId) : null;
+        const edge = parentId ? getEdgeRecord(parentId, selectedNodeId) : null;
+        const order = parentId ? (children[parentId] || []).indexOf(selectedNodeId) + 1 : 0;
+
+        document.getElementById("updateParentNode").value = parent?.full_label || parentId || "";
+        document.getElementById("updateNodeTitle").value = node?.full_label || selectedNodeId;
+        document.getElementById("updateEdgeRelation").value = edge ? normalizeText(edge.relation || "") : "";
+        document.getElementById("updateEdgeOrder").value = order > 0 ? String(order) : "";
+        document.getElementById("updateSummaryContent").value = (node?.summary_lines || []).join("\n");
+        setUpdateEdgeFieldsVisible(!isRootUpdate);
+        setUpdateNodeStatus("");
+        notifyMainUi("");
+        openOverlay(updateNodeDialogEl);
+        setTimeout(() => {
+          const titleInput = document.getElementById("updateNodeTitle");
+          if (titleInput) {
+            titleInput.focus();
+          }
+        }, 0);
+      } catch (error) {
+        window.alert(error.message || String(error));
+      }
+    }
+
+    async function updateNodeFromForm(event) {
+      event.preventDefault();
+      try {
+        if (!selectedNodeId || !nodeMap.has(selectedNodeId)) {
+          throw new Error("Select a node first.");
+        }
+        const oldId = selectedNodeId;
+        const parentId = findParentId(oldId);
+        const isRootUpdate = oldId === ORIGINAL_ROOT || !parentId;
+
+        const nodeTitle = normalizeText(document.getElementById("updateNodeTitle").value);
+        const relation = normalizeText(document.getElementById("updateEdgeRelation").value);
+        const rawOrder = document.getElementById("updateEdgeOrder").value;
+        const summaryContent = document.getElementById("updateSummaryContent").value.replace(/\r?\n/g, "\n").trim();
+
+        if (!nodeTitle) throw new Error("Node title cannot be empty.");
+        if (!summaryContent) throw new Error("Summary markdown content cannot be empty.");
+        if (nodeTitle !== oldId && nodeMap.has(nodeTitle)) {
+          throw new Error("A node with this title already exists.");
+        }
+        if (!isRootUpdate && !relation) {
+          throw new Error("Edge relation cannot be empty.");
+        }
+
+        const childCount = parentId ? (children[parentId] || []).length : 1;
+        const actualOrder = parentId ? resolveSiblingOrder(rawOrder, childCount) : 1;
+
+        applyUpdatedNodeInMemory(
+          isRootUpdate ? null : parentId,
+          oldId,
+          nodeTitle,
+          relation,
+          actualOrder,
+          summaryContent.split("\n")
+        );
+        const persistMode = await persistGraphml();
+
+        selectedNodeId = nodeTitle;
+        updateVisibleNodes();
+        syncEdges();
+        renderDetails(nodeTitle);
+        relayout(true);
+        closeUpdateNodeDialog();
+        notifyMainUi(
+          persistMode === "saved"
+            ? `Updated ${nodeTitle} and wrote graph.graphml.`
+            : `Updated ${nodeTitle}. Downloaded updated graph.graphml.`
+        );
+      } catch (error) {
+        setUpdateNodeStatus(error.message || String(error), "error");
+      }
+    }
+
+    function openDeleteNodeDialog() {
+      try {
+        const parentId = assertNonRootSelected();
+        const node = nodeMap.get(selectedNodeId);
+        const parent = nodeMap.get(parentId);
+        const childCount = (children[selectedNodeId] || []).length;
+        const title = node?.full_label || selectedNodeId;
+        const parentTitle = parent?.full_label || parentId;
+        deleteNodeMessageEl.textContent = childCount
+          ? `Delete "${title}"? Its ${childCount} child node(s) will be moved under "${parentTitle}".`
+          : `Delete "${title}"? This cannot be undone from this view.`;
+        openOverlay(deleteNodeDialogEl);
+      } catch (error) {
+        window.alert(error.message || String(error));
+      }
+    }
+
+    async function confirmDeleteSelectedNode() {
+      try {
+        const parentId = assertNonRootSelected();
+        const deletedId = selectedNodeId;
+        const wasCurrentRoot = currentRoot === deletedId;
+
+        applyDeletedNodeInMemory(parentId, deletedId);
+        await persistGraphml();
+
+        closeOverlay(deleteNodeDialogEl);
+        if (wasCurrentRoot || !nodeMap.has(currentRoot)) {
+          initFromRoot(parentId);
+        } else {
+          applyLayoutForRoot(currentRoot);
+          selectedNodeId = parentId;
+          updateVisibleNodes();
+          syncEdges();
+          renderDetails(parentId);
+          relayout(true);
+        }
+      } catch (error) {
+        window.alert(error.message || String(error));
       }
     }
 
@@ -1856,8 +2336,10 @@ ${summaryFileName}
 
     function collapseAll() {
       expandedNodes.clear();
+      selectedNodeId = currentRoot;
       updateVisibleNodes();
       syncEdges();
+      renderDetails(currentRoot);
       relayout(true);
     }
 
@@ -2016,8 +2498,19 @@ ${summaryFileName}
       }
     });
 
-    installCreateChildFieldGuards();
+    installDialogFieldGuards();
     createChildFormEl.addEventListener("submit", createChildNodeFromForm);
+    updateNodeFormEl.addEventListener("submit", updateNodeFromForm);
+    document.getElementById("childNodeTitle").addEventListener("input", suggestChildFileNames);
+    document.getElementById("childSourceFile").addEventListener("input", function() {
+      childFileNamesEdited = true;
+    });
+    document.getElementById("childSummaryFile").addEventListener("input", function() {
+      childFileNamesEdited = true;
+    });
+    document.getElementById("createChildSaveButton").addEventListener("click", createChildNodeFromForm);
+    document.getElementById("updateNodeSaveButton").addEventListener("click", updateNodeFromForm);
+    document.getElementById("deleteNodeConfirmButton").addEventListener("click", confirmDeleteSelectedNode);
     installSplitter();
     initFromRoot(ORIGINAL_ROOT);
   </script>
@@ -2034,6 +2527,37 @@ ${summaryFileName}
         .replace("__CHILDREN__", json.dumps(cmap))
         .replace("__LEVELS__", json.dumps(levels))
     )
+
+
+class GraphOutputHandler(http.server.SimpleHTTPRequestHandler):
+    def do_PUT(self):
+        if self.path.split("?", 1)[0] != "/graph.graphml":
+            self.send_error(404)
+            return
+        length = int(self.headers.get("Content-Length", "0"))
+        Path(self.directory, "graph.graphml").write_bytes(self.rfile.read(length))
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, PUT, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
+
+def serve_output(output_dir: Path, port: int):
+    handler = partial(GraphOutputHandler, directory=str(output_dir))
+    with socketserver.TCPServer(("127.0.0.1", port), handler) as httpd:
+        print(f"Open http://127.0.0.1:{port}/graph.html")
+        print("Create, update, and delete will overwrite graph.graphml in this folder.")
+        httpd.serve_forever()
 
 
 def main():
@@ -2054,6 +2578,17 @@ def main():
         type=str,
         default="Knowledge Graph",
         help="HTML title",
+    )
+    parser.add_argument(
+        "--serve",
+        action="store_true",
+        help="Serve the output folder so the graph page can overwrite graph.graphml in place",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port to use with --serve",
     )
     args = parser.parse_args()
 
@@ -2077,6 +2612,9 @@ def main():
     print(f"Edges: {graph.number_of_edges()}")
     print(f"Saved HTML: {html_path}")
     print(f"Saved GraphML: {graphml_path}")
+
+    if args.serve:
+        serve_output(output_dir, args.port)
 
 
 if __name__ == "__main__":
