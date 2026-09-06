@@ -724,7 +724,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
   <div id="createChildDialog" class="modal-overlay">
     <div class="dialog-card">
       <h3 class="dialog-title">Add child node</h3>
-      <div class="dialog-help">Select a parent node first. Choose source and summary markdown file names that are not already used in graph.graphml. Saving updates graph.graphml only.</div>
+      <div class="dialog-help">Select a parent node first. Source and summary markdown file names are automatically generated using random UUIDs and are guaranteed to be unique. Saving updates graph.graphml only.</div>
       <form id="createChildForm" class="form-grid">
         <label>Parent node
           <input id="childParentNode" name="parentNode" type="text" readonly>
@@ -738,19 +738,13 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
         <label>Edge order among parent outgoing edges
           <input id="childEdgeOrder" name="childEdgeOrder" type="number" min="1" step="1" required>
         </label>
-        <label>Source markdown file name
-          <input id="childSourceFile" name="childSourceFile" type="text" placeholder="new_child.md" required>
-        </label>
-        <label>Summary markdown file name
-          <input id="childSummaryFile" name="childSummaryFile" type="text" placeholder="new_child_summary.md" required>
-        </label>
         <label>Summary markdown content
           <textarea id="childSummaryContent" name="childSummaryContent" placeholder="# Summary
-Write markdown here..." required></textarea>
+Write markdown here..."></textarea>
         </label>
         <div class="dialog-actions">
-          <button type="button" onclick="closeCreateChildDialog()">Cancel</button>
-          <button type="button" id="createChildSaveButton">Create child</button>
+          <button type="button" class="btn-cancel" onclick="closeCreateChildDialog()">Cancel</button>
+          <button type="button" class="btn-save" id="createChildSaveButton">Create child</button>
         </div>
         <div id="createChildStatus" class="status-box"></div>
       </form>
@@ -775,7 +769,7 @@ Write markdown here..." required></textarea>
           <input id="updateEdgeOrder" name="edgeOrder" type="text" placeholder="1">
         </label>
         <label>Summary markdown content
-          <textarea id="updateSummaryContent" name="summaryContent" required></textarea>
+          <textarea id="updateSummaryContent" name="summaryContent"></textarea>
         </label>
         <div class="dialog-actions">
           <button type="button" class="btn-cancel" onclick="closeUpdateNodeDialog()">Cancel</button>
@@ -975,9 +969,12 @@ Write markdown here..." required></textarea>
       return String(text || "").replace(/\s+/g, " ").trim();
     }
 
-    function slugifyFilename(title) {
-      const slug = String(title || "").trim().replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^[._]+|[._]+$/g, "");
-      return slug || "node";
+    function generateUUID() {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
     }
 
     function uniqueMarkdownFileName(desired, usedNames) {
@@ -1164,36 +1161,16 @@ Write markdown here..." required></textarea>
       nodes.update({ id: parentId, out_degree: node.out_degree });
     }
 
-    let childFileNamesEdited = false;
-
-    function suggestChildFileNames() {
-      if (childFileNamesEdited) return;
-      const title = normalizeText(document.getElementById("childNodeTitle").value);
-      const sourceInput = document.getElementById("childSourceFile");
-      const summaryInput = document.getElementById("childSummaryFile");
-      if (!title) {
-        sourceInput.value = "";
-        summaryInput.value = "";
-        return;
-      }
-      const used = usedMarkdownFileNames();
-      sourceInput.value = uniqueMarkdownFileName(`${slugifyFilename(title)}.md`, used);
-      summaryInput.value = uniqueMarkdownFileName(`${slugifyFilename(title)}_summary.md`, used);
-    }
-
     function openCreateChildDialog() {
       if (!selectedNodeId || !nodeMap.has(selectedNodeId)) {
         window.alert("Select a parent node first.");
         return;
       }
       const parent = nodeMap.get(selectedNodeId);
-      childFileNamesEdited = false;
       document.getElementById("childParentNode").value = parent.full_label || parent.id;
       document.getElementById("childNodeTitle").value = "";
       document.getElementById("childEdgeRelation").value = "";
       document.getElementById("childEdgeOrder").value = String((children[selectedNodeId] || []).length + 1);
-      document.getElementById("childSourceFile").value = "";
-      document.getElementById("childSummaryFile").value = "";
       document.getElementById("childSummaryContent").value = "";
       setCreateChildStatus("");
       openOverlay(createChildDialogEl);
@@ -1216,28 +1193,18 @@ Write markdown here..." required></textarea>
         const nodeTitle = normalizeText(document.getElementById("childNodeTitle").value);
         const relation = normalizeText(document.getElementById("childEdgeRelation").value);
         const requestedOrder = Number(document.getElementById("childEdgeOrder").value);
-        const sourceFileName = sanitizeMarkdownFileName(
-          document.getElementById("childSourceFile").value,
-          "Source markdown file name"
-        );
-        const summaryFileName = sanitizeMarkdownFileName(
-          document.getElementById("childSummaryFile").value,
-          "Summary markdown file name"
-        );
         const summaryContent = document.getElementById("childSummaryContent").value.replace(/\r?\n/g, "\n").trim();
 
         if (!nodeTitle) throw new Error("Child node title cannot be empty.");
         if (!relation) throw new Error("Edge relation cannot be empty.");
         if (!Number.isInteger(requestedOrder) || requestedOrder < 1) throw new Error("Edge order must be a positive integer.");
-        if (!summaryContent) throw new Error("Summary markdown content cannot be empty.");
         if (nodeMap.has(nodeTitle)) throw new Error("A node with this title already exists.");
-        if (sourceFileName.toLowerCase() === summaryFileName.toLowerCase()) {
-          throw new Error("Source file name and summary file name must be different.");
-        }
 
+        // Automatically generate unique file names using UUIDs
         const usedNames = usedMarkdownFileNames();
-        assertUnusedMarkdownFileName(sourceFileName, usedNames, "Source markdown file name");
-        assertUnusedMarkdownFileName(summaryFileName, usedNames, "Summary markdown file name");
+        const uuid = generateUUID();
+        const sourceFileName = uniqueMarkdownFileName(`${uuid}_1.md`, usedNames);
+        const summaryFileName = uniqueMarkdownFileName(`${uuid}_2.md`, usedNames);
         const parentNode = nodeMap.get(parentId);
         const childLevel = (parentNode?.level || 0) + 1;
         const childShortLabel = nodeTitle.length <= 24 ? nodeTitle : nodeTitle.slice(0, 23).trimEnd() + "…";
@@ -1554,7 +1521,6 @@ Write markdown here..." required></textarea>
         const summaryContent = document.getElementById("updateSummaryContent").value.replace(/\r?\n/g, "\n").trim();
 
         if (!nodeTitle) throw new Error("Node title cannot be empty.");
-        if (!summaryContent) throw new Error("Summary markdown content cannot be empty.");
         if (nodeTitle !== oldId && nodeMap.has(nodeTitle)) {
           throw new Error("A node with this title already exists.");
         }
@@ -2501,13 +2467,6 @@ Write markdown here..." required></textarea>
     installDialogFieldGuards();
     createChildFormEl.addEventListener("submit", createChildNodeFromForm);
     updateNodeFormEl.addEventListener("submit", updateNodeFromForm);
-    document.getElementById("childNodeTitle").addEventListener("input", suggestChildFileNames);
-    document.getElementById("childSourceFile").addEventListener("input", function() {
-      childFileNamesEdited = true;
-    });
-    document.getElementById("childSummaryFile").addEventListener("input", function() {
-      childFileNamesEdited = true;
-    });
     document.getElementById("createChildSaveButton").addEventListener("click", createChildNodeFromForm);
     document.getElementById("updateNodeSaveButton").addEventListener("click", updateNodeFromForm);
     document.getElementById("deleteNodeConfirmButton").addEventListener("click", confirmDeleteSelectedNode);

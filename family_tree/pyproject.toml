@@ -1,0 +1,17 @@
+[project]
+name = "family-tree-server"
+version = "0.1.0"
+description = "FastAPI server for family tree graph visualization"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.141.0",
+    "uvicorn>=0.52.0",
+]
+
+[dependency-groups]
+dev = []
+
+[[tool.uv.index]]
+name = "artifactory"
+url = "https://artifacts.dell.com/artifactory/api/pypi/python/simple"
+default = true
