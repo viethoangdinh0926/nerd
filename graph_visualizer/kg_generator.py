@@ -527,6 +527,12 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       font-weight: 600;
       letter-spacing: 0.02em;
     }
+    .node-image {
+      max-width: 100%;
+      height: auto;
+      border-radius: 4px;
+      object-fit: contain;
+    }
     #details .summary-markdown tbody tr:nth-child(even) {
       background: #0a0a0a;
     }
@@ -732,15 +738,18 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
         <label>Child node title
           <input id="childNodeTitle" name="childNodeTitle" type="text" required>
         </label>
-        <label>Edge relation label
+        <label>Explain the relationship of this node's parent to itself
           <input id="childEdgeRelation" name="childEdgeRelation" type="text" placeholder="performs" required>
         </label>
-        <label>Edge order among parent outgoing edges
+        <label>What number child this node is
           <input id="childEdgeOrder" name="childEdgeOrder" type="number" min="1" step="1" required>
         </label>
-        <label>Summary markdown content
+        <label>Notes
           <textarea id="childSummaryContent" name="childSummaryContent" placeholder="# Summary
 Write markdown here..."></textarea>
+        </label>
+        <label>Image (JPEG or PNG, max 10MB)
+          <input id="childImage" name="childImage" type="file" accept="image/jpeg,image/png">
         </label>
         <div class="dialog-actions">
           <button type="button" class="btn-cancel" onclick="closeCreateChildDialog()">Cancel</button>
@@ -762,14 +771,18 @@ Write markdown here..."></textarea>
         <label>Node title
           <input id="updateNodeTitle" name="nodeTitle" type="text" required>
         </label>
-        <label id="updateRelationField">Edge relation label
+        <label id="updateRelationField">Explain the relationship of this node's parent to itself
           <input id="updateEdgeRelation" name="edgeRelation" type="text">
         </label>
-        <label id="updateOrderField">Edge order among parent outgoing edges
+        <label id="updateOrderField">What number child this node is
           <input id="updateEdgeOrder" name="edgeOrder" type="text" placeholder="1">
         </label>
-        <label>Summary markdown content
+        <label>Notes
           <textarea id="updateSummaryContent" name="summaryContent"></textarea>
+        </label>
+        <label>Image (JPEG or PNG, max 10MB)
+          <input id="updateImage" name="updateImage" type="file" accept="image/jpeg,image/png">
+          <div id="currentImagePreview" style="margin-top: 8px;"></div>
         </label>
         <div class="dialog-actions">
           <button type="button" class="btn-cancel" onclick="closeUpdateNodeDialog()">Cancel</button>
@@ -791,13 +804,29 @@ Write markdown here..."></textarea>
     </div>
   </div>
 
+  <div id="conflictDialog" class="modal-overlay">
+    <div class="dialog-card">
+      <h3 class="dialog-title">Someone else changed the graph</h3>
+      <div class="dialog-help">
+        graph.graphml was modified by another editor after you loaded this page, so your
+        change was not saved. Reload to get their version and redo your edit, or overwrite
+        their changes with the graph as it looks in this browser.
+      </div>
+      <div class="dialog-actions">
+        <button type="button" id="conflictReloadButton">Reload their version</button>
+        <button type="button" class="danger" id="conflictOverwriteButton">Overwrite their changes</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const ROOT = __ROOT__;
     let ORIGINAL_ROOT = ROOT;
     const INIT_DEPTH = __DEPTH__;
-    const nodesData = __NODES__;
-    const edgesData = __EDGES__;
-    const children = __CHILDREN__;
+    let nodesData = __NODES__;
+    let edgesData = __EDGES__;
+    let children = __CHILDREN__;
+    let graphEtag = null;
 
     const nodes = new vis.DataSet();
     const edges = new vis.DataSet();
@@ -1045,6 +1074,7 @@ Write markdown here..."></textarea>
         '  <key id="d0" for="node" attr.name="source_file" attr.type="string" />',
         '  <key id="d1" for="node" attr.name="summary_file" attr.type="string" />',
         '  <key id="d2" for="node" attr.name="summary" attr.type="string" />',
+        '  <key id="d5" for="node" attr.name="image" attr.type="string" />',
         '  <key id="d3" for="edge" attr.name="relation" attr.type="string" />',
         '  <key id="d4" for="edge" attr.name="order" attr.type="long" />',
         '  <graph edgedefault="directed">'
@@ -1056,6 +1086,7 @@ Write markdown here..."></textarea>
         lines.push(`      <data key="d0">${escapeXml(node.source_file || "")}</data>`);
         lines.push(`      <data key="d1">${escapeXml(node.summary_file || "")}</data>`);
         lines.push(`      <data key="d2">${escapeXml(summary)}</data>`);
+        lines.push(`      <data key="d5">${escapeXml(node.image || "")}</data>`);
         lines.push("    </node>");
       }
 
@@ -1084,22 +1115,221 @@ Write markdown here..."></textarea>
       URL.revokeObjectURL(url);
     }
 
+    class GraphConflictError extends Error {}
+    class GraphReloadedError extends Error {}
+
+    async function putGraphml(xml, etag) {
+      const headers = { "Content-Type": "text/plain" };
+      if (etag) headers["If-Match"] = etag;
+      const response = await fetch(new URL("graph.graphml", window.location.href), {
+        method: "PUT",
+        headers,
+        body: xml
+      });
+      if (response.status === 409) {
+        graphEtag = response.headers.get("ETag") || graphEtag;
+        throw new GraphConflictError("graph.graphml changed since you loaded it.");
+      }
+      if (!response.ok) {
+        throw new Error(`Server refused the save (HTTP ${response.status}).`);
+      }
+      graphEtag = response.headers.get("ETag") || graphEtag;
+      return "saved";
+    }
+
     async function persistGraphml() {
       const xml = buildGraphmlText();
       try {
-        const response = await fetch(new URL("graph.graphml", window.location.href), {
-          method: "PUT",
-          headers: { "Content-Type": "application/xml" },
-          body: xml
-        });
-        if (response.ok) {
-          return "saved";
-        }
+        return await putGraphml(xml, graphEtag);
       } catch (error) {
+        if (error instanceof GraphConflictError) {
+          const choice = await askConflictResolution();
+          if (choice === "overwrite") {
+            return await putGraphml(xml, "*");
+          }
+          await reloadGraphml();
+          throw new GraphReloadedError(
+            "Someone else changed the graph, so your edit was not saved. Their version is now loaded."
+          );
+        }
+        if (error instanceof GraphReloadedError) throw error;
         // file:// pages and static servers cannot overwrite graph.graphml in place
       }
       downloadGraphml(xml);
       return "downloaded";
+    }
+
+    function askConflictResolution() {
+      const dialogEl = document.getElementById("conflictDialog");
+      const reloadButton = document.getElementById("conflictReloadButton");
+      const overwriteButton = document.getElementById("conflictOverwriteButton");
+      openOverlay(dialogEl);
+
+      return new Promise(resolve => {
+        function finish(choice) {
+          reloadButton.removeEventListener("click", onReload);
+          overwriteButton.removeEventListener("click", onOverwrite);
+          closeOverlay(dialogEl);
+          resolve(choice);
+        }
+        function onReload() { finish("reload"); }
+        function onOverwrite() { finish("overwrite"); }
+        reloadButton.addEventListener("click", onReload);
+        overwriteButton.addEventListener("click", onOverwrite);
+      });
+    }
+
+    async function reloadGraphml() {
+      const success = await loadGraphmlOnStartup();
+      if (success) {
+        initFromLoadedGraphml();
+      }
+      return success;
+    }
+
+    function initFromLoadedGraphml() {
+      // Prefer the original root if it exists and is still a root (in_degree === 0),
+      // otherwise fall back to the first node with no incoming edges.
+      let foundRoot = null;
+      if (nodeMap.has(ORIGINAL_ROOT) && nodeMap.get(ORIGINAL_ROOT).in_degree === 0) {
+        foundRoot = ORIGINAL_ROOT;
+      } else {
+        for (const [id, node] of nodeMap.entries()) {
+          if (node.in_degree === 0) {
+            foundRoot = id;
+            break;
+          }
+        }
+      }
+      initFromRoot(foundRoot || ORIGINAL_ROOT);
+    }
+
+    function recomputeLevels() {
+      // BFS to compute levels from root
+      const visited = new Set();
+      const queue = [];
+      
+      // Find root (node with in_degree 0)
+      for (const [id, node] of nodeMap.entries()) {
+        if (node.in_degree === 0) {
+          queue.push(id);
+          currentLevels[id] = 0;
+          visited.add(id);
+          break;
+        }
+      }
+      
+      while (queue.length > 0) {
+        const current = queue.shift();
+        const currentLevel = currentLevels[current] || 0;
+        
+        const childIds = children[current] || [];
+        childIds.forEach(childId => {
+          if (!visited.has(childId)) {
+            currentLevels[childId] = currentLevel + 1;
+            visited.add(childId);
+            queue.push(childId);
+          }
+        });
+      }
+      
+      // Update node levels
+      for (const [id, node] of nodeMap.entries()) {
+        node.level = currentLevels[id] || 0;
+      }
+    }
+
+    async function loadGraphmlOnStartup() {
+      try {
+        const response = await fetch(new URL("graph.graphml", window.location.href), {
+          cache: "no-store"
+        });
+        if (!response.ok) return false;
+        graphEtag = response.headers.get("ETag");
+        const xml = await response.text();
+        
+        // Parse the GraphML and update the graph data
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xml, "application/xml");
+        
+        // Clear current data
+        nodeMap.clear();
+        edgesData.length = 0;
+        Object.keys(children).forEach(key => delete children[key]);
+        Object.keys(currentLevels).forEach(key => delete currentLevels[key]);
+        activeNodeIds.clear();
+        expandedNodes.clear();
+        
+        // Parse nodes
+        const nodes = doc.querySelectorAll("node");
+        nodes.forEach(node => {
+          const id = node.getAttribute("id");
+          const sourceFile = node.querySelector('data[key="d0"]')?.textContent || "";
+          const summaryFile = node.querySelector('data[key="d1"]')?.textContent || "";
+          const summary = node.querySelector('data[key="d2"]')?.textContent || "";
+          const image = node.querySelector('data[key="d5"]')?.textContent || "";
+          
+          nodeMap.set(id, {
+            id: id,
+            label: id.length <= 24 ? id : id.slice(0, 23).trimEnd() + "…",
+            full_label: id,
+            short_label: id.length <= 24 ? id : id.slice(0, 23).trimEnd() + "…",
+            title: id,
+            level: 0,
+            source_file: sourceFile,
+            source_path: "",
+            summary_file: summaryFile,
+            summary_lines: summary.split("\n"),
+            image: image,
+            in_degree: 0,
+            out_degree: 0,
+            x: 0,
+            y: 0
+          });
+        });
+        
+        // Parse edges
+        const edges = doc.querySelectorAll("edge");
+        edges.forEach(edge => {
+          const from = edge.getAttribute("source");
+          const to = edge.getAttribute("target");
+          const relation = edge.querySelector('data[key="d3"]')?.textContent || "";
+          const order = parseInt(edge.querySelector('data[key="d4"]')?.textContent || "-1");
+          
+          if (!children[from]) children[from] = [];
+          children[from].push(to);
+          
+          edgesData.push({
+            id: `${from}->${to}`,
+            from: from,
+            to: to,
+            relation: relation,
+            order: order,
+            label: `${relation} [${order}]`,
+            full_label: `${relation} [${order}]`,
+            title: `${from} → ${to}<br>relation: ${relation}<br>order: ${order}`,
+            base_color: "#848484",
+            incoming_color: "#2563eb",
+            outgoing_color: "#dc2626"
+          });
+          
+          // Update degrees
+          if (nodeMap.has(to)) {
+            nodeMap.get(to).in_degree++;
+          }
+          if (nodeMap.has(from)) {
+            nodeMap.get(from).out_degree++;
+          }
+        });
+        
+        // Recompute levels
+        recomputeLevels();
+        
+        return true;
+      } catch (error) {
+        console.log("Could not load graph.graphml on startup, using embedded data:", error.message);
+        return false;
+      }
     }
 
     function removeInsertedChildState(parentId, childId, edgeId) {
@@ -1194,11 +1424,41 @@ Write markdown here..."></textarea>
         const relation = normalizeText(document.getElementById("childEdgeRelation").value);
         const requestedOrder = Number(document.getElementById("childEdgeOrder").value);
         const summaryContent = document.getElementById("childSummaryContent").value.replace(/\r?\n/g, "\n").trim();
+        const imageFile = document.getElementById("childImage").files[0];
 
         if (!nodeTitle) throw new Error("Child node title cannot be empty.");
         if (!relation) throw new Error("Edge relation cannot be empty.");
         if (!Number.isInteger(requestedOrder) || requestedOrder < 1) throw new Error("Edge order must be a positive integer.");
         if (nodeMap.has(nodeTitle)) throw new Error("A node with this title already exists.");
+
+        // Handle image upload if present
+        let imageUrl = null;
+        if (imageFile) {
+          if (imageFile.size > 10 * 1024 * 1024) {
+            throw new Error("Image size exceeds 10MB limit.");
+          }
+          if (!["image/jpeg", "image/png"].includes(imageFile.type)) {
+            throw new Error("Only JPEG and PNG images are allowed.");
+          }
+          
+          const formData = new FormData();
+          formData.append("file", imageFile);
+          
+          try {
+            const uploadResponse = await fetch(new URL("upload-image", window.location.href), {
+              method: "POST",
+              body: formData
+            });
+            if (!uploadResponse.ok) {
+              const errorData = await uploadResponse.json();
+              throw new Error(errorData.detail || "Failed to upload image");
+            }
+            const uploadResult = await uploadResponse.json();
+            imageUrl = uploadResult.url;
+          } catch (uploadError) {
+            throw new Error(`Image upload failed: ${uploadError.message}`);
+          }
+        }
 
         // Automatically generate unique file names using UUIDs
         const usedNames = usedMarkdownFileNames();
@@ -1219,6 +1479,7 @@ Write markdown here..."></textarea>
           source_path: "",
           summary_file: summaryFileName,
           summary_lines: summaryContent.split("\n"),
+          image: imageUrl,
           in_degree: 1,
           out_degree: 0,
           x: (parentNode?.x || 0) + 260,
@@ -1247,6 +1508,7 @@ Write markdown here..."></textarea>
 
         try {
           const persistMode = await persistGraphml();
+          
           activeNodeIds.add(nodeTitle);
           currentLevels[nodeTitle] = childLevel;
           expandedNodes.add(parentId);
@@ -1256,17 +1518,26 @@ Write markdown here..."></textarea>
           selectedNodeId = nodeTitle;
           renderDetails(nodeTitle);
           relayout(true);
-          setCreateChildStatus(
+          closeOverlay(createChildDialogEl);
+          notifyMainUi(
             persistMode === "saved"
               ? `Added ${nodeTitle} and updated graph.graphml.`
-              : `Added ${nodeTitle}. Downloaded updated graph.graphml.`,
-            "success"
+              : `Added ${nodeTitle}. Downloaded updated graph.graphml.`
           );
         } catch (error) {
-          removeInsertedChildState(parentId, nodeTitle, newEdge.id);
+          // After a conflict reload the in-memory graph is already the server's
+          // version, so there is nothing local left to roll back.
+          if (!(error instanceof GraphReloadedError)) {
+            removeInsertedChildState(parentId, nodeTitle, newEdge.id);
+          }
           throw error;
         }
       } catch (error) {
+        if (error instanceof GraphReloadedError) {
+          closeOverlay(createChildDialogEl);
+          notifyMainUi(error.message, "error");
+          return;
+        }
         setCreateChildStatus(error.message || String(error), "error");
       }
     }
@@ -1398,7 +1669,7 @@ Write markdown here..."></textarea>
       }
     }
 
-    function applyUpdatedNodeInMemory(parentId, oldId, newId, relation, order, summaryLines) {
+    function applyUpdatedNodeInMemory(parentId, oldId, newId, relation, order, summaryLines, imageUrl = null) {
       renameNodeInMemory(oldId, newId);
 
       if (parentId) {
@@ -1420,6 +1691,9 @@ Write markdown here..."></textarea>
       const stored = nodeMap.get(newId);
       if (stored) {
         stored.summary_lines = summaryLines;
+        if (imageUrl !== null) {
+          stored.image = imageUrl;
+        }
       }
     }
 
@@ -1490,6 +1764,20 @@ Write markdown here..."></textarea>
         document.getElementById("updateEdgeRelation").value = edge ? normalizeText(edge.relation || "") : "";
         document.getElementById("updateEdgeOrder").value = order > 0 ? String(order) : "";
         document.getElementById("updateSummaryContent").value = (node?.summary_lines || []).join("\n");
+        
+        // Show current image preview if exists
+        const imagePreview = document.getElementById("currentImagePreview");
+        if (node?.image) {
+          imagePreview.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <img src="${node.image}" alt="Current image" style="max-width: 100px; max-height: 100px; border-radius: 4px; object-fit: contain;">
+              <span style="font-size: 12px; color: #666;">Current image (will be replaced if you upload a new one)</span>
+            </div>
+          `;
+        } else {
+          imagePreview.innerHTML = "";
+        }
+        
         setUpdateEdgeFieldsVisible(!isRootUpdate);
         setUpdateNodeStatus("");
         notifyMainUi("");
@@ -1519,6 +1807,7 @@ Write markdown here..."></textarea>
         const relation = normalizeText(document.getElementById("updateEdgeRelation").value);
         const rawOrder = document.getElementById("updateEdgeOrder").value;
         const summaryContent = document.getElementById("updateSummaryContent").value.replace(/\r?\n/g, "\n").trim();
+        const imageFile = document.getElementById("updateImage").files[0];
 
         if (!nodeTitle) throw new Error("Node title cannot be empty.");
         if (nodeTitle !== oldId && nodeMap.has(nodeTitle)) {
@@ -1526,6 +1815,51 @@ Write markdown here..."></textarea>
         }
         if (!isRootUpdate && !relation) {
           throw new Error("Edge relation cannot be empty.");
+        }
+
+        // Handle image upload if present
+        let imageUrl = null;
+        const currentNode = nodeMap.get(oldId);
+        const oldImageUrl = currentNode?.image || null;
+        
+        if (imageFile) {
+          if (imageFile.size > 10 * 1024 * 1024) {
+            throw new Error("Image size exceeds 10MB limit.");
+          }
+          if (!["image/jpeg", "image/png"].includes(imageFile.type)) {
+            throw new Error("Only JPEG and PNG images are allowed.");
+          }
+          
+          const formData = new FormData();
+          formData.append("file", imageFile);
+          
+          try {
+            const uploadResponse = await fetch(new URL("upload-image", window.location.href), {
+              method: "POST",
+              body: formData
+            });
+            if (!uploadResponse.ok) {
+              const errorData = await uploadResponse.json();
+              throw new Error(errorData.detail || "Failed to upload image");
+            }
+            const uploadResult = await uploadResponse.json();
+            imageUrl = uploadResult.url;
+            
+            // Delete old image if it exists and is different from the new one
+            if (oldImageUrl && oldImageUrl !== imageUrl) {
+              try {
+                await fetch(new URL("delete-image", window.location.href), {
+                  method: "DELETE",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ image_url: oldImageUrl })
+                });
+              } catch (deleteError) {
+                console.warn("Failed to delete old image:", deleteError.message);
+              }
+            }
+          } catch (uploadError) {
+            throw new Error(`Image upload failed: ${uploadError.message}`);
+          }
         }
 
         const childCount = parentId ? (children[parentId] || []).length : 1;
@@ -1537,7 +1871,8 @@ Write markdown here..."></textarea>
           nodeTitle,
           relation,
           actualOrder,
-          summaryContent.split("\n")
+          summaryContent.split("\n"),
+          imageUrl !== null ? imageUrl : oldImageUrl
         );
         const persistMode = await persistGraphml();
 
@@ -1553,6 +1888,11 @@ Write markdown here..."></textarea>
             : `Updated ${nodeTitle}. Downloaded updated graph.graphml.`
         );
       } catch (error) {
+        if (error instanceof GraphReloadedError) {
+          closeUpdateNodeDialog();
+          notifyMainUi(error.message, "error");
+          return;
+        }
         setUpdateNodeStatus(error.message || String(error), "error");
       }
     }
@@ -1595,6 +1935,11 @@ Write markdown here..."></textarea>
           relayout(true);
         }
       } catch (error) {
+        if (error instanceof GraphReloadedError) {
+          closeOverlay(deleteNodeDialogEl);
+          notifyMainUi(error.message, "error");
+          return;
+        }
         window.alert(error.message || String(error));
       }
     }
@@ -1974,6 +2319,7 @@ Write markdown here..."></textarea>
           <div class="meta-row"><span class="meta-label">In-degree:</span> ${node.in_degree}</div>
           <div class="meta-row"><span class="meta-label">Out-degree:</span> ${node.out_degree}</div>
           <div class="meta-row"><span class="meta-label">Level:</span> ${node.level}</div>
+          ${node.image ? `<div class="meta-row"><span class="meta-label">Image:</span> <img src="${escapeHtml(node.image)}" alt="Node image" class="node-image"></div>` : ''}
         </div>
 
         <div class="panel-field">
@@ -2471,7 +2817,17 @@ Write markdown here..."></textarea>
     document.getElementById("updateNodeSaveButton").addEventListener("click", updateNodeFromForm);
     document.getElementById("deleteNodeConfirmButton").addEventListener("click", confirmDeleteSelectedNode);
     installSplitter();
-    initFromRoot(ORIGINAL_ROOT);
+    
+    // Try to load from graph.graphml first, fall back to embedded data
+    (async () => {
+      const loadedFromFile = await loadGraphmlOnStartup();
+      if (loadedFromFile) {
+        initFromLoadedGraphml();
+      } else {
+        // Use embedded data
+        initFromRoot(ORIGINAL_ROOT);
+      }
+    })();
   </script>
 </body>
 </html>"""
