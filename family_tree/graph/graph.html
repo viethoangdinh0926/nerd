@@ -1,0 +1,2488 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Knowledge Graph</title>
+  <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #fafafa;
+    }
+    #toolbar {
+      padding: 10px 14px;
+      border-bottom: 1px solid #ddd;
+      background: white;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    #main {
+      display: flex;
+      width: 100%;
+      height: calc(100vh - 58px);
+      min-height: 0;
+    }
+    #net {
+      flex: 1 1 auto;
+      min-width: 0;
+      background: white;
+    }
+    #splitter {
+      width: 8px;
+      cursor: col-resize;
+      background: linear-gradient(to right, #f3f3f3, #e3e3e3, #f3f3f3);
+      border-left: 1px solid #ddd;
+      border-right: 1px solid #ddd;
+      flex: 0 0 auto;
+    }
+    #splitter:hover {
+      background: linear-gradient(to right, #ececec, #d8d8d8, #ececec);
+    }
+    #details {
+      width: 360px;
+      min-width: 220px;
+      max-width: 70vw;
+      background: #fcfcfc;
+      padding: 16px;
+      overflow: auto;
+      user-select: text;
+      -webkit-user-select: text;
+      white-space: normal;
+      flex: 0 0 auto;
+    }
+    #details h2 {
+      margin: 0 0 8px 0;
+      font-size: 22px;
+    }
+    #details .panel-field {
+      border: 1px solid #ddd;
+      background: white;
+      border-radius: 10px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+    #details .meta-row {
+      color: #444;
+      font-size: 14px;
+      margin-bottom: 6px;
+      line-height: 1.45;
+    }
+    #details .meta-row:last-child {
+      margin-bottom: 0;
+    }
+    #details .meta-label {
+      font-weight: 700;
+    }
+    #details .section-title {
+      margin-top: 0;
+      margin-bottom: 10px;
+      font-weight: bold;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #444;
+    }
+    #details .summary-markdown {
+      line-height: 1.5;
+      background: #000;
+      color: #fff;
+      padding: 12px;
+      border-radius: 8px;
+    }
+    #details .summary-markdown > :first-child {
+      margin-top: 0;
+    }
+    #details .summary-markdown > :last-child {
+      margin-bottom: 0;
+    }
+    #details .summary-markdown h1,
+    #details .summary-markdown h2,
+    #details .summary-markdown h3,
+    #details .summary-markdown h4,
+    #details .summary-markdown h5,
+    #details .summary-markdown h6 {
+      margin-top: 1em;
+      margin-bottom: 0.5em;
+      font-weight: 700;
+    }
+    #details .summary-markdown p,
+    #details .summary-markdown ul,
+    #details .summary-markdown ol,
+    #details .summary-markdown blockquote,
+    #details .summary-markdown pre {
+      margin-top: 0;
+      margin-bottom: 12px;
+    }
+    #details .summary-markdown ul,
+    #details .summary-markdown ol {
+      padding-left: 22px;
+    }
+    #details .summary-markdown pre {
+      overflow: auto;
+      padding: 12px;
+      border-radius: 8px;
+      background: #f3f3f3;
+      color: #000;
+      white-space: pre-wrap;
+      tab-size: 4;
+    }
+    #details .summary-markdown code {
+      background: #f3f3f3;
+      color: #000;
+      padding: 1px 4px;
+      border-radius: 4px;
+      white-space: pre-wrap;
+    }
+    #details .summary-markdown pre code {
+      background: transparent;
+      padding: 0;
+      border-radius: 0;
+      white-space: pre;
+    }
+    #details .summary-markdown blockquote {
+      padding-left: 12px;
+      border-left: 4px solid #ddd;
+      color: #555;
+    }
+    #details .summary-markdown hr {
+      border: none;
+      border-top: 1px solid #ddd;
+      margin: 16px 0;
+    }
+    #details .summary-markdown table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 14px;
+      line-height: 1.5;
+      overflow-x: auto;
+      display: block;
+      background: #000;
+      color: #fff;
+    }
+    #details .summary-markdown thead {
+      background: #111;
+      color: #fff;
+    }
+    #details .summary-markdown th,
+    #details .summary-markdown td {
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid #333;
+      color: #fff;
+    }
+    #details .summary-markdown th {
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .node-image {
+      max-width: 100%;
+      height: auto;
+      border-radius: 4px;
+      object-fit: contain;
+    }
+    #details .summary-markdown tbody tr:nth-child(even) {
+      background: #0a0a0a;
+    }
+    #details .summary-markdown tbody tr:hover {
+      background: #111827;
+    }
+    #details .summary-markdown td + td,
+    #details .summary-markdown th + th {
+      border-left: 1px solid #222;
+    }
+    #details .summary-markdown {
+      overflow-x: auto;
+    }
+    #details .summary-markdown thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    #details .empty {
+      color: #666;
+      line-height: 1.5;
+    }
+    button {
+      border: 1px solid #bbb;
+      background: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #f2f2f2;
+    }
+    button.danger {
+      border-color: #f1a0a0;
+      color: #991b1b;
+    }
+    button.danger:hover {
+      background: #fef2f2;
+    }
+    button.btn-cancel {
+      border-color: #dc2626;
+      background: #dc2626;
+      color: #fff;
+    }
+    button.btn-cancel:hover {
+      background: #b91c1c;
+    }
+    button.btn-save {
+      border-color: #2563eb;
+      background: #2563eb;
+      color: #fff;
+    }
+    button.btn-save:hover {
+      background: #1d4ed8;
+    }
+    .app-notice {
+      display: none;
+      padding: 10px 14px;
+      border-bottom: 1px solid #a7f3d0;
+      background: #ecfdf5;
+      color: #065f46;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .app-notice.visible {
+      display: block;
+    }
+    .app-notice.error {
+      background: #fef2f2;
+      border-bottom-color: #fecaca;
+      color: #991b1b;
+    }
+    .hint {
+      color: #555;
+      font-size: 14px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .form-grid label {
+      font-size: 14px;
+      color: #222;
+      display: block;
+    }
+    .form-grid input,
+    .form-grid textarea,
+    .form-grid select {
+      width: 100%;
+      margin-top: 6px;
+      border: 1px solid #bbb;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font: inherit;
+      background: #fff;
+    }
+    .form-grid textarea {
+      min-height: 140px;
+      resize: vertical;
+    }
+    .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(0,0,0,0.35);
+    }
+    .modal-overlay.open {
+      display: flex;
+    }
+    .dialog-card {
+      padding: 18px;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 14px;
+      width: min(720px, 92vw);
+      max-height: calc(100vh - 48px);
+      overflow: auto;
+      box-shadow: 0 18px 50px rgba(0,0,0,0.2);
+    }
+    .dialog-title {
+      margin: 0 0 12px 0;
+      font-size: 22px;
+    }
+    .dialog-help {
+      color: #555;
+      font-size: 14px;
+      line-height: 1.45;
+      margin-bottom: 14px;
+    }
+    .status-box {
+      margin-top: 12px;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 14px;
+      line-height: 1.45;
+      display: none;
+    }
+    .status-box.error {
+      display: block;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+    }
+    .status-box.success {
+      display: block;
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      color: #065f46;
+    }
+    code {
+      background: #f3f3f3;
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <button onclick="expandAll()">Expand all</button>
+    <button onclick="collapseAll()">Collapse all</button>
+    <button onclick="setSelectedAsRoot()">Set selected as root</button>
+    <button onclick="restoreOriginalTree()">Restore original tree</button>
+    <button onclick="fitGraph()">Fit</button>
+    <button onclick="openCreateChildDialog()">Add child node</button>
+    <button onclick="openUpdateNodeDialog()">Update node</button>
+    <button class="danger" onclick="openDeleteNodeDialog()">Delete node</button>
+    <span class="hint">Click a node to select it. Clicking a node that is not currently in focus expands it. Clicking the same in-focus node again collapses it. The clicked node is highlighted, incoming and outgoing edges use different colors, node labels are shortened by default, and the selected node shows its full name. The graph auto-reorganizes after each click for a clearer layout while keeping children below parents and sibling edge order left-to-right. Shift-click only shows details. Update node can change any selected node. The original root can only change title and summary. Delete applies only to a selected non-root node.</span>
+  </div>
+  <div id="appNotice" class="app-notice" hidden></div>
+
+  <div id="main">
+    <div id="net"></div>
+    <div id="splitter" title="Drag to resize details panel"></div>
+    <aside id="details">
+      <div class="empty">
+        Click a node to see its metadata and summary here.<br><br>
+        You can highlight and copy text from both fields.
+      </div>
+    </aside>
+  </div>
+
+
+  <div id="createChildDialog" class="modal-overlay">
+    <div class="dialog-card">
+      <h3 class="dialog-title">Add child node</h3>
+      <div class="dialog-help">Select a parent node first. Source and summary markdown file names are automatically generated using random UUIDs and are guaranteed to be unique. Saving updates graph.graphml only.</div>
+      <form id="createChildForm" class="form-grid">
+        <label>Parent node
+          <input id="childParentNode" name="parentNode" type="text" readonly>
+        </label>
+        <label>Child node title
+          <input id="childNodeTitle" name="childNodeTitle" type="text" required>
+        </label>
+        <label>Explain the relationship of this node's parent to itself
+          <input id="childEdgeRelation" name="childEdgeRelation" type="text" placeholder="performs" required>
+        </label>
+        <label>What number child this node is
+          <input id="childEdgeOrder" name="childEdgeOrder" type="number" min="1" step="1" required>
+        </label>
+        <label>Notes
+          <textarea id="childSummaryContent" name="childSummaryContent" placeholder="# Summary
+Write markdown here..."></textarea>
+        </label>
+        <label>Image (JPEG or PNG, max 10MB)
+          <input id="childImage" name="childImage" type="file" accept="image/jpeg,image/png">
+        </label>
+        <div class="dialog-actions">
+          <button type="button" class="btn-cancel" onclick="closeCreateChildDialog()">Cancel</button>
+          <button type="button" class="btn-save" id="createChildSaveButton">Create child</button>
+        </div>
+        <div id="createChildStatus" class="status-box"></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="updateNodeDialog" class="modal-overlay">
+    <div class="dialog-card">
+      <h3 class="dialog-title">Update node</h3>
+      <div class="dialog-help" id="updateNodeHelp">Select a node first. Non-root nodes can change title, incoming edge label, sibling order, and summary markdown. The original root can only change title and summary. An invalid edge order places a non-root node at the end of its parent's children. Saving updates graph.graphml only.</div>
+      <form id="updateNodeForm" class="form-grid">
+        <label id="updateParentField">Parent node
+          <input id="updateParentNode" name="parentNode" type="text" readonly>
+        </label>
+        <label>Node title
+          <input id="updateNodeTitle" name="nodeTitle" type="text" required>
+        </label>
+        <label id="updateRelationField">Explain the relationship of this node's parent to itself
+          <input id="updateEdgeRelation" name="edgeRelation" type="text">
+        </label>
+        <label id="updateOrderField">What number child this node is
+          <input id="updateEdgeOrder" name="edgeOrder" type="text" placeholder="1">
+        </label>
+        <label>Notes
+          <textarea id="updateSummaryContent" name="summaryContent"></textarea>
+        </label>
+        <label>Image (JPEG or PNG, max 10MB)
+          <input id="updateImage" name="updateImage" type="file" accept="image/jpeg,image/png">
+          <div id="currentImagePreview" style="margin-top: 8px;"></div>
+        </label>
+        <div class="dialog-actions">
+          <button type="button" class="btn-cancel" onclick="closeUpdateNodeDialog()">Cancel</button>
+          <button type="button" class="btn-save" id="updateNodeSaveButton">Save changes</button>
+        </div>
+        <div id="updateNodeStatus" class="status-box"></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="deleteNodeDialog" class="modal-overlay">
+    <div class="dialog-card">
+      <h3 class="dialog-title">Delete node</h3>
+      <div id="deleteNodeMessage" class="dialog-help"></div>
+      <div class="dialog-actions">
+        <button type="button" onclick="closeDeleteNodeDialog()">Cancel</button>
+        <button type="button" class="danger" id="deleteNodeConfirmButton">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="conflictDialog" class="modal-overlay">
+    <div class="dialog-card">
+      <h3 class="dialog-title">Someone else changed the graph</h3>
+      <div class="dialog-help">
+        graph.graphml was modified by another editor after you loaded this page, so your
+        change was not saved. Reload to get their version and redo your edit, or overwrite
+        their changes with the graph as it looks in this browser.
+      </div>
+      <div class="dialog-actions">
+        <button type="button" id="conflictReloadButton">Reload their version</button>
+        <button type="button" class="danger" id="conflictOverwriteButton">Overwrite their changes</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const ROOT = "Nguyen Van Vinh & Vu Thi Hien";
+    let ORIGINAL_ROOT = ROOT;
+    const INIT_DEPTH = 0;
+    let nodesData = [{"id": "DiNardo Anh Ly", "label": "DiNardo Anh Ly", "full_label": "DiNardo Anh Ly", "short_label": "DiNardo Anh Ly", "title": "DiNardo Anh Ly", "level": 3, "source_file": "DiNardo_Anh_Ly_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/DiNardo_Anh_Ly_1_1.md", "summary_file": "DiNardo_Anh_Ly_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -4030.0, "y": 510}, {"id": "DiNardo_Anh_Ly_1_2", "label": "DiNardo_Anh_Ly_1_2", "full_label": "DiNardo_Anh_Ly_1_2", "short_label": "DiNardo_Anh_Ly_1_2", "title": "DiNardo_Anh_Ly_1_2", "level": 5, "source_file": "DiNardo_Anh_Ly_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/DiNardo_Anh_Ly_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 850}, {"id": "Dinh Chloe", "label": "Dinh Chloe", "full_label": "Dinh Chloe", "short_label": "Dinh Chloe", "title": "Dinh Chloe", "level": 3, "source_file": "Dinh_Chloe_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Dinh_Chloe_1_1.md", "summary_file": "Dinh_Chloe_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -3770.0, "y": 510}, {"id": "Dinh_Chloe_1_2", "label": "Dinh_Chloe_1_2", "full_label": "Dinh_Chloe_1_2", "short_label": "Dinh_Chloe_1_2", "title": "Dinh_Chloe_1_2", "level": 6, "source_file": "Dinh_Chloe_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Dinh_Chloe_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 1020}, {"id": "Dinh Gia Bao Anh", "label": "Dinh Gia Bao Anh", "full_label": "Dinh Gia Bao Anh", "short_label": "Dinh Gia Bao Anh", "title": "Dinh Gia Bao Anh", "level": 3, "source_file": "Dinh_Gia_Bao_Anh_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Dinh_Gia_Bao_Anh_1_1.md", "summary_file": "Dinh_Gia_Bao_Anh_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -3510.0, "y": 510}, {"id": "Dinh_Gia_Bao_Anh_1_2", "label": "Dinh_Gia_Bao_Anh_1_2", "full_label": "Dinh_Gia_Bao_Anh_1_2", "short_label": "Dinh_Gia_Bao_Anh_1_2", "title": "Dinh_Gia_Bao_Anh_1_2", "level": 7, "source_file": "Dinh_Gia_Bao_Anh_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Dinh_Gia_Bao_Anh_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 1190}, {"id": "Dinh Gia Bao Tran", "label": "Dinh Gia Bao Tran", "full_label": "Dinh Gia Bao Tran", "short_label": "Dinh Gia Bao Tran", "title": "Dinh Gia Bao Tran", "level": 3, "source_file": "Dinh_Gia_Bao_Tran_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Dinh_Gia_Bao_Tran_1_1.md", "summary_file": "Dinh_Gia_Bao_Tran_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -3250.0, "y": 510}, {"id": "Dinh_Gia_Bao_Tran_1_2", "label": "Dinh_Gia_Bao_Tran_1_2", "full_label": "Dinh_Gia_Bao_Tran_1_2", "short_label": "Dinh_Gia_Bao_Tran_1_2", "title": "Dinh_Gia_Bao_Tran_1_2", "level": 8, "source_file": "Dinh_Gia_Bao_Tran_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Dinh_Gia_Bao_Tran_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 1360}, {"id": "Dinh Hoang Viet & Nguyen Hang", "label": "Dinh Hoang Viet & Nguye\u2026", "full_label": "Dinh Hoang Viet & Nguyen Hang", "short_label": "Dinh Hoang Viet & Nguye\u2026", "title": "Dinh Hoang Viet & Nguyen Hang", "level": 2, "source_file": "Dinh_Hoang_Viet__Nguyen_Hang_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Dinh_Hoang_Viet__Nguyen_Hang_1_1.md", "summary_file": "Dinh_Hoang_Viet__Nguyen_Hang_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 2, "x": -3250.0, "y": 340}, {"id": "Dinh Ivy", "label": "Dinh Ivy", "full_label": "Dinh Ivy", "short_label": "Dinh Ivy", "title": "Dinh Ivy", "level": 3, "source_file": "Dinh_Ivy_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Dinh_Ivy_1_1.md", "summary_file": "Dinh_Ivy_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -2990.0, "y": 510}, {"id": "Dinh_Hoang_Viet__Nguyen_Hang_1_2", "label": "Dinh_Hoang_Viet__Nguyen\u2026", "full_label": "Dinh_Hoang_Viet__Nguyen_Hang_1_2", "short_label": "Dinh_Hoang_Viet__Nguyen\u2026", "title": "Dinh_Hoang_Viet__Nguyen_Hang_1_2", "level": 9, "source_file": "Dinh_Hoang_Viet__Nguyen_Hang_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Dinh_Hoang_Viet__Nguyen_Hang_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 1530}, {"id": "Dinh_Ivy_1_2", "label": "Dinh_Ivy_1_2", "full_label": "Dinh_Ivy_1_2", "short_label": "Dinh_Ivy_1_2", "title": "Dinh_Ivy_1_2", "level": 10, "source_file": "Dinh_Ivy_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Dinh_Ivy_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 1700}, {"id": "Dinh Kim Truc Khanh Linh", "label": "Dinh Kim Truc Khanh Linh", "full_label": "Dinh Kim Truc Khanh Linh", "short_label": "Dinh Kim Truc Khanh Linh", "title": "Dinh Kim Truc Khanh Linh", "level": 2, "source_file": "Dinh_Kim_Truc_Khanh_Linh_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Dinh_Kim_Truc_Khanh_Linh_1_1.md", "summary_file": "Dinh_Kim_Truc_Khanh_Linh_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -2990.0, "y": 340}, {"id": "Dinh_Kim_Truc_Khanh_Linh_1_2", "label": "Dinh_Kim_Truc_Khanh_Lin\u2026", "full_label": "Dinh_Kim_Truc_Khanh_Linh_1_2", "short_label": "Dinh_Kim_Truc_Khanh_Lin\u2026", "title": "Dinh_Kim_Truc_Khanh_Linh_1_2", "level": 11, "source_file": "Dinh_Kim_Truc_Khanh_Linh_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Dinh_Kim_Truc_Khanh_Linh_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 1870}, {"id": "Dinh Nhat & Pham Gau", "label": "Dinh Nhat & Pham Gau", "full_label": "Dinh Nhat & Pham Gau", "short_label": "Dinh Nhat & Pham Gau", "title": "Dinh Nhat & Pham Gau", "level": 2, "source_file": "Dinh_Nhat__Pham_Gau_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Dinh_Nhat__Pham_Gau_1_1.md", "summary_file": "Dinh_Nhat__Pham_Gau_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -2730.0, "y": 340}, {"id": "Dinh_Nhat__Pham_Gau_1_2", "label": "Dinh_Nhat__Pham_Gau_1_2", "full_label": "Dinh_Nhat__Pham_Gau_1_2", "short_label": "Dinh_Nhat__Pham_Gau_1_2", "title": "Dinh_Nhat__Pham_Gau_1_2", "level": 12, "source_file": "Dinh_Nhat__Pham_Gau_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Dinh_Nhat__Pham_Gau_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 2040}, {"id": "Fair Allie", "label": "Fair Allie", "full_label": "Fair Allie", "short_label": "Fair Allie", "title": "Fair Allie", "level": 3, "source_file": "Fair_Allie_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Fair_Allie_1_1.md", "summary_file": "Fair_Allie_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -2730.0, "y": 510}, {"id": "Fair_Allie_1_2", "label": "Fair_Allie_1_2", "full_label": "Fair_Allie_1_2", "short_label": "Fair_Allie_1_2", "title": "Fair_Allie_1_2", "level": 13, "source_file": "Fair_Allie_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Fair_Allie_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 2210}, {"id": "Fair Ethan", "label": "Fair Ethan", "full_label": "Fair Ethan", "short_label": "Fair Ethan", "title": "Fair Ethan", "level": 3, "source_file": "Fair_Ethan_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Fair_Ethan_1_1.md", "summary_file": "Fair_Ethan_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -2470.0, "y": 510}, {"id": "Fair_Ethan_1_2", "label": "Fair_Ethan_1_2", "full_label": "Fair_Ethan_1_2", "short_label": "Fair_Ethan_1_2", "title": "Fair_Ethan_1_2", "level": 14, "source_file": "Fair_Ethan_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Fair_Ethan_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 2380}, {"id": "Jones Knox", "label": "Jones Knox", "full_label": "Jones Knox", "short_label": "Jones Knox", "title": "Jones Knox", "level": 3, "source_file": "Jones_Knox_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Jones_Knox_1_1.md", "summary_file": "Jones_Knox_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -2210.0, "y": 510}, {"id": "Jones_Knox_1_2", "label": "Jones_Knox_1_2", "full_label": "Jones_Knox_1_2", "short_label": "Jones_Knox_1_2", "title": "Jones_Knox_1_2", "level": 15, "source_file": "Jones_Knox_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Jones_Knox_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 2550}, {"id": "/Jordan Rasphoumy Lily & Jordan Dalton Jessie", "label": "/Jordan Rasphoumy Lily\u2026", "full_label": "/Jordan Rasphoumy Lily & Jordan Dalton Jessie", "short_label": "/Jordan Rasphoumy Lily\u2026", "title": "/Jordan Rasphoumy Lily & Jordan Dalton Jessie", "level": 2, "source_file": "Jordan_Rasphoumy_Lily__Jordan_Dalton_Jessie_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Jordan_Rasphoumy_Lily__Jordan_Dalton_Jessie_1_1.md", "summary_file": "Jordan_Rasphoumy_Lily__Jordan_Dalton_Jessie_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -3510.0, "y": 340}, {"id": "Jordan_Rasphoumy_Lily__Jordan_Dalton_Jessie_1_2", "label": "Jordan_Rasphoumy_Lily__\u2026", "full_label": "Jordan_Rasphoumy_Lily__Jordan_Dalton_Jessie_1_2", "short_label": "Jordan_Rasphoumy_Lily__\u2026", "title": "Jordan_Rasphoumy_Lily__Jordan_Dalton_Jessie_1_2", "level": 16, "source_file": "Jordan_Rasphoumy_Lily__Jordan_Dalton_Jessie_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Jordan_Rasphoumy_Lily__Jordan_Dalton_Jessie_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 2720}, {"id": "Le Julia", "label": "Le Julia", "full_label": "Le Julia", "short_label": "Le Julia", "title": "Le Julia", "level": 2, "source_file": "Le_Julia_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Le_Julia_1_1.md", "summary_file": "Le_Julia_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -2470.0, "y": 340}, {"id": "Le_Julia_1_2", "label": "Le_Julia_1_2", "full_label": "Le_Julia_1_2", "short_label": "Le_Julia_1_2", "title": "Le_Julia_1_2", "level": 17, "source_file": "Le_Julia_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Le_Julia_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 2890}, {"id": "Le Kevin", "label": "Le Kevin", "full_label": "Le Kevin", "short_label": "Le Kevin", "title": "Le Kevin", "level": 2, "source_file": "Le_Kevin_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Le_Kevin_1_1.md", "summary_file": "Le_Kevin_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -2210.0, "y": 340}, {"id": "Le_Kevin_1_2", "label": "Le_Kevin_1_2", "full_label": "Le_Kevin_1_2", "short_label": "Le_Kevin_1_2", "title": "Le_Kevin_1_2", "level": 18, "source_file": "Le_Kevin_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Le_Kevin_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 3060}, {"id": "Leung Dexter", "label": "Leung Dexter", "full_label": "Leung Dexter", "short_label": "Leung Dexter", "title": "Leung Dexter", "level": 3, "source_file": "Leung_Dexter_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Leung_Dexter_1_1.md", "summary_file": "Leung_Dexter_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -1950.0, "y": 510}, {"id": "Leung_Dexter_1_2", "label": "Leung_Dexter_1_2", "full_label": "Leung_Dexter_1_2", "short_label": "Leung_Dexter_1_2", "title": "Leung_Dexter_1_2", "level": 19, "source_file": "Leung_Dexter_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Leung_Dexter_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 3230}, {"id": "Leung Serena", "label": "Leung Serena", "full_label": "Leung Serena", "short_label": "Leung Serena", "title": "Leung Serena", "level": 3, "source_file": "Leung_Serena_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Leung_Serena_1_1.md", "summary_file": "Leung_Serena_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -1690.0, "y": 510}, {"id": "Leung_Serena_1_2", "label": "Leung_Serena_1_2", "full_label": "Leung_Serena_1_2", "short_label": "Leung_Serena_1_2", "title": "Leung_Serena_1_2", "level": 20, "source_file": "Leung_Serena_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Leung_Serena_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 3400}, {"id": "Ly/Wilson Ngoc AnhThu (Mo) & Wilson William", "label": "Ly/Wilson Ngoc AnhThu (\u2026", "full_label": "Ly/Wilson Ngoc AnhThu (Mo) & Wilson William", "short_label": "Ly/Wilson Ngoc AnhThu (\u2026", "title": "Ly/Wilson Ngoc AnhThu (Mo) & Wilson William", "level": 2, "source_file": "LyWilson_Ngoc_AnhThu_Mo__Wilson_William_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/LyWilson_Ngoc_AnhThu_Mo__Wilson_William_1_1.md", "summary_file": "LyWilson_Ngoc_AnhThu_Mo__Wilson_William_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 2, "x": -1170.0, "y": 340}, {"id": "Wilson Ayame", "label": "Wilson Ayame", "full_label": "Wilson Ayame", "short_label": "Wilson Ayame", "title": "Wilson Ayame", "level": 3, "source_file": "Wilson_Ayame_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Wilson_Ayame_1_1.md", "summary_file": "Wilson_Ayame_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 4030.0, "y": 510}, {"id": "Wilson AnhThu-William 2", "label": "Wilson AnhThu-William 2", "full_label": "Wilson AnhThu-William 2", "short_label": "Wilson AnhThu-William 2", "title": "Wilson AnhThu-William 2", "level": 3, "source_file": "Wilson_AnhThu-William_2_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Wilson_AnhThu-William_2_1_1.md", "summary_file": "Wilson_AnhThu-William_2_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 3770.0, "y": 510}, {"id": "LyWilson_Ngoc_AnhThu_Mo__Wilson_William_1_2", "label": "LyWilson_Ngoc_AnhThu_Mo\u2026", "full_label": "LyWilson_Ngoc_AnhThu_Mo__Wilson_William_1_2", "short_label": "LyWilson_Ngoc_AnhThu_Mo\u2026", "title": "LyWilson_Ngoc_AnhThu_Mo__Wilson_William_1_2", "level": 21, "source_file": "LyWilson_Ngoc_AnhThu_Mo__Wilson_William_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/LyWilson_Ngoc_AnhThu_Mo__Wilson_William_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 3570}, {"id": "Ly Chau Khoa (Bich To)", "label": "Ly Chau Khoa (Bich To)", "full_label": "Ly Chau Khoa (Bich To)", "short_label": "Ly Chau Khoa (Bich To)", "title": "Ly Chau Khoa (Bich To)", "level": 2, "source_file": "Ly_Chau_Khoa_Bich_To_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Ly_Chau_Khoa_Bich_To_1_1.md", "summary_file": "Ly_Chau_Khoa_Bich_To_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 2, "x": -1950.0, "y": 340}, {"id": "Ly_Chau_Khoa_Bich_To_1_2", "label": "Ly_Chau_Khoa_Bich_To_1_2", "full_label": "Ly_Chau_Khoa_Bich_To_1_2", "short_label": "Ly_Chau_Khoa_Bich_To_1_2", "title": "Ly_Chau_Khoa_Bich_To_1_2", "level": 22, "source_file": "Ly_Chau_Khoa_Bich_To_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Ly_Chau_Khoa_Bich_To_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 3740}, {"id": "Ly Hoang Yen (Chiuly, Chilly)", "label": "Ly Hoang Yen (Chiuly, C\u2026", "full_label": "Ly Hoang Yen (Chiuly, Chilly)", "short_label": "Ly Hoang Yen (Chiuly, C\u2026", "title": "Ly Hoang Yen (Chiuly, Chilly)", "level": 2, "source_file": "Ly_Hoang_Yen_Chiuly_Chilly_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Ly_Hoang_Yen_Chiuly_Chilly_1_1.md", "summary_file": "Ly_Hoang_Yen_Chiuly_Chilly_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -1690.0, "y": 340}, {"id": "Ly_Hoang_Yen_Chiuly_Chilly_1_2", "label": "Ly_Hoang_Yen_Chiuly_Chi\u2026", "full_label": "Ly_Hoang_Yen_Chiuly_Chilly_1_2", "short_label": "Ly_Hoang_Yen_Chiuly_Chi\u2026", "title": "Ly_Hoang_Yen_Chiuly_Chilly_1_2", "level": 23, "source_file": "Ly_Hoang_Yen_Chiuly_Chilly_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Ly_Hoang_Yen_Chiuly_Chilly_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 3910}, {"id": "Ly Thuy Linh (Bich Ly)", "label": "Ly Thuy Linh (Bich Ly)", "full_label": "Ly Thuy Linh (Bich Ly)", "short_label": "Ly Thuy Linh (Bich Ly)", "title": "Ly Thuy Linh (Bich Ly)", "level": 2, "source_file": "Ly_Thuy_Linh_Bich_Ly_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Ly_Thuy_Linh_Bich_Ly_1_1.md", "summary_file": "Ly_Thuy_Linh_Bich_Ly_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -1430.0, "y": 340}, {"id": "Ly_Thuy_Linh_Bich_Ly_1_2", "label": "Ly_Thuy_Linh_Bich_Ly_1_2", "full_label": "Ly_Thuy_Linh_Bich_Ly_1_2", "short_label": "Ly_Thuy_Linh_Bich_Ly_1_2", "title": "Ly_Thuy_Linh_Bich_Ly_1_2", "level": 24, "source_file": "Ly_Thuy_Linh_Bich_Ly_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Ly_Thuy_Linh_Bich_Ly_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 4080}, {"id": "Nguyen/DiNardo Ngoc Amy & DiNardo Robert Anthony", "label": "Nguyen/DiNardo Ngoc Amy\u2026", "full_label": "Nguyen/DiNardo Ngoc Amy & DiNardo Robert Anthony", "short_label": "Nguyen/DiNardo Ngoc Amy\u2026", "title": "Nguyen/DiNardo Ngoc Amy & DiNardo Robert Anthony", "level": 2, "source_file": "NguyenDiNardo_Ngoc_Amy__DiNardo_Robert_Anthony_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/NguyenDiNardo_Ngoc_Amy__DiNardo_Robert_Anthony_1_1.md", "summary_file": "NguyenDiNardo_Ngoc_Amy__DiNardo_Robert_Anthony_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 1, "x": 650.0, "y": 340}, {"id": "NguyenDiNardo_Ngoc_Amy__DiNardo_Robert_Anthony_1_2", "label": "NguyenDiNardo_Ngoc_Amy_\u2026", "full_label": "NguyenDiNardo_Ngoc_Amy__DiNardo_Robert_Anthony_1_2", "short_label": "NguyenDiNardo_Ngoc_Amy_\u2026", "title": "NguyenDiNardo_Ngoc_Amy__DiNardo_Robert_Anthony_1_2", "level": 25, "source_file": "NguyenDiNardo_Ngoc_Amy__DiNardo_Robert_Anthony_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/NguyenDiNardo_Ngoc_Amy__DiNardo_Robert_Anthony_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 4250}, {"id": "Nguyen/Fair Vy & Fair Chris", "label": "Nguyen/Fair Vy & Fair C\u2026", "full_label": "Nguyen/Fair Vy & Fair Chris", "short_label": "Nguyen/Fair Vy & Fair C\u2026", "title": "Nguyen/Fair Vy & Fair Chris", "level": 2, "source_file": "NguyenFair_Vy__Fair_Chris_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/NguyenFair_Vy__Fair_Chris_1_1.md", "summary_file": "NguyenFair_Vy__Fair_Chris_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 2, "x": 910.0, "y": 340}, {"id": "NguyenFair_Vy__Fair_Chris_1_2", "label": "NguyenFair_Vy__Fair_Chr\u2026", "full_label": "NguyenFair_Vy__Fair_Chris_1_2", "short_label": "NguyenFair_Vy__Fair_Chr\u2026", "title": "NguyenFair_Vy__Fair_Chris_1_2", "level": 26, "source_file": "NguyenFair_Vy__Fair_Chris_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/NguyenFair_Vy__Fair_Chris_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 4420}, {"id": "Nguyen/Jones Phu & Jones Kyle", "label": "Nguyen/Jones Phu & Jone\u2026", "full_label": "Nguyen/Jones Phu & Jones Kyle", "short_label": "Nguyen/Jones Phu & Jone\u2026", "title": "Nguyen/Jones Phu & Jones Kyle", "level": 2, "source_file": "NguyenJones_Phu__Jones_Kyle_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/NguyenJones_Phu__Jones_Kyle_1_1.md", "summary_file": "NguyenJones_Phu__Jones_Kyle_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 1, "x": 1170.0, "y": 340}, {"id": "NguyenJones_Phu__Jones_Kyle_1_2", "label": "NguyenJones_Phu__Jones_\u2026", "full_label": "NguyenJones_Phu__Jones_Kyle_1_2", "short_label": "NguyenJones_Phu__Jones_\u2026", "title": "NguyenJones_Phu__Jones_Kyle_1_2", "level": 27, "source_file": "NguyenJones_Phu__Jones_Kyle_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/NguyenJones_Phu__Jones_Kyle_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 4590}, {"id": "Nguyen/Quach Duyen & Quach Tuong", "label": "Nguyen/Quach Duyen & Qu\u2026", "full_label": "Nguyen/Quach Duyen & Quach Tuong", "short_label": "Nguyen/Quach Duyen & Qu\u2026", "title": "Nguyen/Quach Duyen & Quach Tuong", "level": 1, "source_file": "NguyenQuach_Duyen__Quach_Tuong_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/NguyenQuach_Duyen__Quach_Tuong_1_1.md", "summary_file": "NguyenQuach_Duyen__Quach_Tuong_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 3, "x": 1170.0, "y": 170}, {"id": "Quach/Leung Carmen & Leung Simon", "label": "Quach/Leung Carmen & Le\u2026", "full_label": "Quach/Leung Carmen & Leung Simon", "short_label": "Quach/Leung Carmen & Le\u2026", "title": "Quach/Leung Carmen & Leung Simon", "level": 2, "source_file": "QuachLeung_Carmen__Leung_Simon_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/QuachLeung_Carmen__Leung_Simon_1_1.md", "summary_file": "QuachLeung_Carmen__Leung_Simon_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 2, "x": 3510.0, "y": 340}, {"id": "Quach Carline & Jeffrey", "label": "Quach Carline & Jeffrey", "full_label": "Quach Carline & Jeffrey", "short_label": "Quach Carline & Jeffrey", "title": "Quach Carline & Jeffrey", "level": 2, "source_file": "Quach_Carline__Jeffrey_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Quach_Carline__Jeffrey_1_1.md", "summary_file": "Quach_Carline__Jeffrey_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 3250.0, "y": 340}, {"id": "Quach Camilla", "label": "Quach Camilla", "full_label": "Quach Camilla", "short_label": "Quach Camilla", "title": "Quach Camilla", "level": 2, "source_file": "Quach_Camilla_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Quach_Camilla_1_1.md", "summary_file": "Quach_Camilla_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 2990.0, "y": 340}, {"id": "NguyenQuach_Duyen__Quach_Tuong_1_2", "label": "NguyenQuach_Duyen__Quac\u2026", "full_label": "NguyenQuach_Duyen__Quach_Tuong_1_2", "short_label": "NguyenQuach_Duyen__Quac\u2026", "title": "NguyenQuach_Duyen__Quach_Tuong_1_2", "level": 28, "source_file": "NguyenQuach_Duyen__Quach_Tuong_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/NguyenQuach_Duyen__Quach_Tuong_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 4760}, {"id": "Nguyen/Rowden Josephy & Rowden Jesse", "label": "Nguyen/Rowden Josephy &\u2026", "full_label": "Nguyen/Rowden Josephy & Rowden Jesse", "short_label": "Nguyen/Rowden Josephy &\u2026", "title": "Nguyen/Rowden Josephy & Rowden Jesse", "level": 3, "source_file": "NguyenRowden_Josephy__Rowden_Jesse_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/NguyenRowden_Josephy__Rowden_Jesse_1_1.md", "summary_file": "NguyenRowden_Josephy__Rowden_Jesse_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 390.0, "y": 510}, {"id": "NguyenRowden_Josephy__Rowden_Jesse_1_2", "label": "NguyenRowden_Josephy__R\u2026", "full_label": "NguyenRowden_Josephy__Rowden_Jesse_1_2", "short_label": "NguyenRowden_Josephy__R\u2026", "title": "NguyenRowden_Josephy__Rowden_Jesse_1_2", "level": 29, "source_file": "NguyenRowden_Josephy__Rowden_Jesse_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/NguyenRowden_Josephy__Rowden_Jesse_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 4930}, {"id": "Nguyen/Tsurumoto Thuy Kristina & Tsurumoto K-husband", "label": "Nguyen/Tsurumoto Thuy K\u2026", "full_label": "Nguyen/Tsurumoto Thuy Kristina & Tsurumoto K-husband", "short_label": "Nguyen/Tsurumoto Thuy K\u2026", "title": "Nguyen/Tsurumoto Thuy Kristina & Tsurumoto K-husband", "level": 3, "source_file": "NguyenTsurumoto_Thuy_Kristina__Tsurumoto_K-husband_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/NguyenTsurumoto_Thuy_Kristina__Tsurumoto_K-husband_1_1.md", "summary_file": "NguyenTsurumoto_Thuy_Kristina__Tsurumoto_K-husband_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 2, "x": 650.0, "y": 510}, {"id": "Tsurumoto Otto", "label": "Tsurumoto Otto", "full_label": "Tsurumoto Otto", "short_label": "Tsurumoto Otto", "title": "Tsurumoto Otto", "level": 4, "source_file": "Tsurumoto_Otto_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Tsurumoto_Otto_1_1.md", "summary_file": "Tsurumoto_Otto_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -130.0, "y": 680}, {"id": "Tsurumoto Rocky", "label": "Tsurumoto Rocky", "full_label": "Tsurumoto Rocky", "short_label": "Tsurumoto Rocky", "title": "Tsurumoto Rocky", "level": 4, "source_file": "Tsurumoto_Rocky_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Tsurumoto_Rocky_1_1.md", "summary_file": "Tsurumoto_Rocky_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 130.0, "y": 680}, {"id": "NguyenTsurumoto_Thuy_Kristina__Tsurumoto_K-husband_1_2", "label": "NguyenTsurumoto_Thuy_Kr\u2026", "full_label": "NguyenTsurumoto_Thuy_Kristina__Tsurumoto_K-husband_1_2", "short_label": "NguyenTsurumoto_Thuy_Kr\u2026", "title": "NguyenTsurumoto_Thuy_Kristina__Tsurumoto_K-husband_1_2", "level": 30, "source_file": "NguyenTsurumoto_Thuy_Kristina__Tsurumoto_K-husband_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/NguyenTsurumoto_Thuy_Kristina__Tsurumoto_K-husband_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 5100}, {"id": "Nguyen Bich", "label": "Nguyen Bich", "full_label": "Nguyen Bich", "short_label": "Nguyen Bich", "title": "Nguyen Bich", "level": 1, "source_file": "Nguyen_Bich_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Bich_1_1.md", "summary_file": "Nguyen_Bich_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -1170.0, "y": 170}, {"id": "Nguyen_Bich_1_2", "label": "Nguyen_Bich_1_2", "full_label": "Nguyen_Bich_1_2", "short_label": "Nguyen_Bich_1_2", "title": "Nguyen_Bich_1_2", "level": 31, "source_file": "Nguyen_Bich_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Bich_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 5270}, {"id": "Nguyen Billy", "label": "Nguyen Billy", "full_label": "Nguyen Billy", "short_label": "Nguyen Billy", "title": "Nguyen Billy", "level": 2, "source_file": "Nguyen_Billy_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Billy_1_1.md", "summary_file": "Nguyen_Billy_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -910.0, "y": 340}, {"id": "Nguyen_Billy_1_2", "label": "Nguyen_Billy_1_2", "full_label": "Nguyen_Billy_1_2", "short_label": "Nguyen_Billy_1_2", "title": "Nguyen_Billy_1_2", "level": 32, "source_file": "Nguyen_Billy_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Billy_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 5440}, {"id": "Nguyen Dax", "label": "Nguyen Dax", "full_label": "Nguyen Dax", "short_label": "Nguyen Dax", "title": "Nguyen Dax", "level": 3, "source_file": "Nguyen_Dax_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Dax_1_1.md", "summary_file": "Nguyen_Dax_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -1430.0, "y": 510}, {"id": "Nguyen_Dax_1_2", "label": "Nguyen_Dax_1_2", "full_label": "Nguyen_Dax_1_2", "short_label": "Nguyen_Dax_1_2", "title": "Nguyen_Dax_1_2", "level": 33, "source_file": "Nguyen_Dax_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Dax_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 5610}, {"id": "Nguyen Hanh & Nguyen Tang", "label": "Nguyen Hanh & Nguyen Ta\u2026", "full_label": "Nguyen Hanh & Nguyen Tang", "short_label": "Nguyen Hanh & Nguyen Ta\u2026", "title": "Nguyen Hanh & Nguyen Tang", "level": 1, "source_file": "Nguyen_Hanh__Nguyen_Tang_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Hanh__Nguyen_Tang_1_1.md", "summary_file": "Nguyen_Hanh__Nguyen_Tang_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 4, "x": -910.0, "y": 170}, {"id": "Nguyen Khanh (Bim) & /Nguyen Kimberly", "label": "Nguyen Khanh (Bim) & /N\u2026", "full_label": "Nguyen Khanh (Bim) & /Nguyen Kimberly", "short_label": "Nguyen Khanh (Bim) & /N\u2026", "title": "Nguyen Khanh (Bim) & /Nguyen Kimberly", "level": 2, "source_file": "Nguyen_Khanh_Bim__Nguyen_Kimberly_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Khanh_Bim__Nguyen_Kimberly_1_1.md", "summary_file": "Nguyen_Khanh_Bim__Nguyen_Kimberly_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 3, "x": -130.0, "y": 340}, {"id": "Nguyen Johnny & Gordiyenko/ Natalia", "label": "Nguyen Johnny & Gordiye\u2026", "full_label": "Nguyen Johnny & Gordiyenko/ Natalia", "short_label": "Nguyen Johnny & Gordiye\u2026", "title": "Nguyen Johnny & Gordiyenko/ Natalia", "level": 2, "source_file": "Nguyen_Johnny__Gordiyenko_Natalia_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Johnny__Gordiyenko_Natalia_1_1.md", "summary_file": "Nguyen_Johnny__Gordiyenko_Natalia_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -390.0, "y": 340}, {"id": "Nguyen_Hanh__Nguyen_Tang_1_2", "label": "Nguyen_Hanh__Nguyen_Tan\u2026", "full_label": "Nguyen_Hanh__Nguyen_Tang_1_2", "short_label": "Nguyen_Hanh__Nguyen_Tan\u2026", "title": "Nguyen_Hanh__Nguyen_Tang_1_2", "level": 34, "source_file": "Nguyen_Hanh__Nguyen_Tang_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Hanh__Nguyen_Tang_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 5780}, {"id": "Nguyen Hau & Pham Chinh", "label": "Nguyen Hau & Pham Chinh", "full_label": "Nguyen Hau & Pham Chinh", "short_label": "Nguyen Hau & Pham Chinh", "title": "Nguyen Hau & Pham Chinh", "level": 1, "source_file": "Nguyen_Hau__Pham_Chinh_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Hau__Pham_Chinh_1_1.md", "summary_file": "Nguyen_Hau__Pham_Chinh_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 6, "x": -650.0, "y": 170}, {"id": "Pham/Nguyen Kim & Nguyen Trung", "label": "Pham/Nguyen Kim & Nguye\u2026", "full_label": "Pham/Nguyen Kim & Nguyen Trung", "short_label": "Pham/Nguyen Kim & Nguye\u2026", "title": "Pham/Nguyen Kim & Nguyen Trung", "level": 2, "source_file": "PhamNguyen_Kim__Nguyen_Trung_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/PhamNguyen_Kim__Nguyen_Trung_1_1.md", "summary_file": "PhamNguyen_Kim__Nguyen_Trung_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 4, "x": 2730.0, "y": 340}, {"id": "Pham Phuong & Mai", "label": "Pham Phuong & Mai", "full_label": "Pham Phuong & Mai", "short_label": "Pham Phuong & Mai", "title": "Pham Phuong & Mai", "level": 2, "source_file": "Pham_Phuong__Mai_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Phuong__Mai_1_1.md", "summary_file": "Pham_Phuong__Mai_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 2, "x": 2470.0, "y": 340}, {"id": "Pham Binh & /Pham Sou", "label": "Pham Binh & /Pham Sou", "full_label": "Pham Binh & /Pham Sou", "short_label": "Pham Binh & /Pham Sou", "title": "Pham Binh & /Pham Sou", "level": 2, "source_file": "Pham_Binh__Pham_Sou_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Binh__Pham_Sou_1_1.md", "summary_file": "Pham_Binh__Pham_Sou_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 6, "x": 1430.0, "y": 340}, {"id": "Pham Huy", "label": "Pham Huy", "full_label": "Pham Huy", "short_label": "Pham Huy", "title": "Pham Huy", "level": 2, "source_file": "Pham_Huy_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Huy_1_1.md", "summary_file": "Pham_Huy_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 2, "x": 1950.0, "y": 340}, {"id": "Pham Ngoc James & Stevens/Pham Sedalia", "label": "Pham Ngoc James & Steve\u2026", "full_label": "Pham Ngoc James & Stevens/Pham Sedalia", "short_label": "Pham Ngoc James & Steve\u2026", "title": "Pham Ngoc James & Stevens/Pham Sedalia", "level": 2, "source_file": "Pham_Ngoc_James__StevensPham_Sedalia_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Ngoc_James__StevensPham_Sedalia_1_1.md", "summary_file": "Pham_Ngoc_James__StevensPham_Sedalia_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 1, "x": 2210.0, "y": 340}, {"id": "Pham Brian & /Pham", "label": "Pham Brian & /Pham", "full_label": "Pham Brian & /Pham", "short_label": "Pham Brian & /Pham", "title": "Pham Brian & /Pham", "level": 2, "source_file": "Pham_Brian__Pham_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Brian__Pham_1_1.md", "summary_file": "Pham_Brian__Pham_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 1690.0, "y": 340}, {"id": "Nguyen_Hau__Pham_Chinh_1_2", "label": "Nguyen_Hau__Pham_Chinh_\u2026", "full_label": "Nguyen_Hau__Pham_Chinh_1_2", "short_label": "Nguyen_Hau__Pham_Chinh_\u2026", "title": "Nguyen_Hau__Pham_Chinh_1_2", "level": 35, "source_file": "Nguyen_Hau__Pham_Chinh_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Hau__Pham_Chinh_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 5950}, {"id": "Nguyen Hoang & Changkachith Thit", "label": "Nguyen Hoang & Changkac\u2026", "full_label": "Nguyen Hoang & Changkachith Thit", "short_label": "Nguyen Hoang & Changkac\u2026", "title": "Nguyen Hoang & Changkachith Thit", "level": 1, "source_file": "Nguyen_Hoang__Changkachith_Thit_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Hoang__Changkachith_Thit_1_1.md", "summary_file": "Nguyen_Hoang__Changkachith_Thit_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 1, "x": -390.0, "y": 170}, {"id": "Nguyen_Hoang__Changkachith_Thit_1_2", "label": "Nguyen_Hoang__Changkach\u2026", "full_label": "Nguyen_Hoang__Changkachith_Thit_1_2", "short_label": "Nguyen_Hoang__Changkach\u2026", "title": "Nguyen_Hoang__Changkachith_Thit_1_2", "level": 36, "source_file": "Nguyen_Hoang__Changkachith_Thit_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Hoang__Changkachith_Thit_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 6120}, {"id": "Nguyen Huu Benjamin", "label": "Nguyen Huu Benjamin", "full_label": "Nguyen Huu Benjamin", "short_label": "Nguyen Huu Benjamin", "title": "Nguyen Huu Benjamin", "level": 2, "source_file": "Nguyen_Huu_Benjamin_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Huu_Benjamin_1_1.md", "summary_file": "Nguyen_Huu_Benjamin_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -650.0, "y": 340}, {"id": "Nguyen_Huu_Benjamin_1_2", "label": "Nguyen_Huu_Benjamin_1_2", "full_label": "Nguyen_Huu_Benjamin_1_2", "short_label": "Nguyen_Huu_Benjamin_1_2", "title": "Nguyen_Huu_Benjamin_1_2", "level": 37, "source_file": "Nguyen_Huu_Benjamin_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Huu_Benjamin_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 6290}, {"id": "Nguyen Jason", "label": "Nguyen Jason", "full_label": "Nguyen Jason", "short_label": "Nguyen Jason", "title": "Nguyen Jason", "level": 3, "source_file": "Nguyen_Jason_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Jason_1_1.md", "summary_file": "Nguyen_Jason_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -1170.0, "y": 510}, {"id": "Nguyen_Jason_1_2", "label": "Nguyen_Jason_1_2", "full_label": "Nguyen_Jason_1_2", "short_label": "Nguyen_Jason_1_2", "title": "Nguyen_Jason_1_2", "level": 38, "source_file": "Nguyen_Jason_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Jason_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 6460}, {"id": "Nguyen_Johnny__Gordiyenko_Natalia_1_2", "label": "Nguyen_Johnny__Gordiyen\u2026", "full_label": "Nguyen_Johnny__Gordiyenko_Natalia_1_2", "short_label": "Nguyen_Johnny__Gordiyen\u2026", "title": "Nguyen_Johnny__Gordiyenko_Natalia_1_2", "level": 39, "source_file": "Nguyen_Johnny__Gordiyenko_Natalia_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Johnny__Gordiyenko_Natalia_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 6630}, {"id": "Nguyen Mai Kayla", "label": "Nguyen Mai Kayla", "full_label": "Nguyen Mai Kayla", "short_label": "Nguyen Mai Kayla", "title": "Nguyen Mai Kayla", "level": 3, "source_file": "Nguyen_Mai_Kayla_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Mai_Kayla_1_1.md", "summary_file": "Nguyen_Mai_Kayla_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -910.0, "y": 510}, {"id": "Nguyen Sloan", "label": "Nguyen Sloan", "full_label": "Nguyen Sloan", "short_label": "Nguyen Sloan", "title": "Nguyen Sloan", "level": 3, "source_file": "Nguyen_Sloan_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Sloan_1_1.md", "summary_file": "Nguyen_Sloan_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -390.0, "y": 510}, {"id": "Nguyen_Khanh_Bim__Nguyen_Kimberly_1_2", "label": "Nguyen_Khanh_Bim__Nguye\u2026", "full_label": "Nguyen_Khanh_Bim__Nguyen_Kimberly_1_2", "short_label": "Nguyen_Khanh_Bim__Nguye\u2026", "title": "Nguyen_Khanh_Bim__Nguyen_Kimberly_1_2", "level": 40, "source_file": "Nguyen_Khanh_Bim__Nguyen_Kimberly_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Khanh_Bim__Nguyen_Kimberly_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 6800}, {"id": "Nguyen Khuong & Le Quynh & Tai Cathy", "label": "Nguyen Khuong & Le Quyn\u2026", "full_label": "Nguyen Khuong & Le Quynh & Tai Cathy", "short_label": "Nguyen Khuong & Le Quyn\u2026", "title": "Nguyen Khuong & Le Quynh & Tai Cathy", "level": 2, "source_file": "Nguyen_Khuong__Le_Quynh__Tai_Cathy_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Khuong__Le_Quynh__Tai_Cathy_1_1.md", "summary_file": "Nguyen_Khuong__Le_Quynh__Tai_Cathy_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 2, "x": 130.0, "y": 340}, {"id": "Nguyen Max", "label": "Nguyen Max", "full_label": "Nguyen Max", "short_label": "Nguyen Max", "title": "Nguyen Max", "level": 3, "source_file": "Nguyen_Max_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Max_1_1.md", "summary_file": "Nguyen_Max_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -650.0, "y": 510}, {"id": "Nguyen Tiffany", "label": "Nguyen Tiffany", "full_label": "Nguyen Tiffany", "short_label": "Nguyen Tiffany", "title": "Nguyen Tiffany", "level": 3, "source_file": "Nguyen_Tiffany_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Tiffany_1_1.md", "summary_file": "Nguyen_Tiffany_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 130.0, "y": 510}, {"id": "Nguyen_Khuong__Le_Quynh__Tai_Cathy_1_2", "label": "Nguyen_Khuong__Le_Quynh\u2026", "full_label": "Nguyen_Khuong__Le_Quynh__Tai_Cathy_1_2", "short_label": "Nguyen_Khuong__Le_Quynh\u2026", "title": "Nguyen_Khuong__Le_Quynh__Tai_Cathy_1_2", "level": 41, "source_file": "Nguyen_Khuong__Le_Quynh__Tai_Cathy_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Khuong__Le_Quynh__Tai_Cathy_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 6970}, {"id": "Nguyen_Mai_Kayla_1_2", "label": "Nguyen_Mai_Kayla_1_2", "full_label": "Nguyen_Mai_Kayla_1_2", "short_label": "Nguyen_Mai_Kayla_1_2", "title": "Nguyen_Mai_Kayla_1_2", "level": 42, "source_file": "Nguyen_Mai_Kayla_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Mai_Kayla_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 7140}, {"id": "Nguyen_Max_1_2", "label": "Nguyen_Max_1_2", "full_label": "Nguyen_Max_1_2", "short_label": "Nguyen_Max_1_2", "title": "Nguyen_Max_1_2", "level": 43, "source_file": "Nguyen_Max_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Max_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 7310}, {"id": "Nguyen Ngoc Anh & Nguyen Huu Cong", "label": "Nguyen Ngoc Anh & Nguye\u2026", "full_label": "Nguyen Ngoc Anh & Nguyen Huu Cong", "short_label": "Nguyen Ngoc Anh & Nguye\u2026", "title": "Nguyen Ngoc Anh & Nguyen Huu Cong", "level": 1, "source_file": "Nguyen_Ngoc_Anh__Nguyen_Huu_Cong_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Ngoc_Anh__Nguyen_Huu_Cong_1_1.md", "summary_file": "Nguyen_Ngoc_Anh__Nguyen_Huu_Cong_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 2, "x": -130.0, "y": 170}, {"id": "Nguyen_Ngoc_Anh__Nguyen_Huu_Cong_1_2", "label": "Nguyen_Ngoc_Anh__Nguyen\u2026", "full_label": "Nguyen_Ngoc_Anh__Nguyen_Huu_Cong_1_2", "short_label": "Nguyen_Ngoc_Anh__Nguyen\u2026", "title": "Nguyen_Ngoc_Anh__Nguyen_Huu_Cong_1_2", "level": 44, "source_file": "Nguyen_Ngoc_Anh__Nguyen_Huu_Cong_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Ngoc_Anh__Nguyen_Huu_Cong_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 7480}, {"id": "Nguyen_Sloan_1_2", "label": "Nguyen_Sloan_1_2", "full_label": "Nguyen_Sloan_1_2", "short_label": "Nguyen_Sloan_1_2", "title": "Nguyen_Sloan_1_2", "level": 45, "source_file": "Nguyen_Sloan_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Sloan_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 7650}, {"id": "Nguyen Thi Kim Oanh & Dinh Phan My", "label": "Nguyen Thi Kim Oanh & D\u2026", "full_label": "Nguyen Thi Kim Oanh & Dinh Phan My", "short_label": "Nguyen Thi Kim Oanh & D\u2026", "title": "Nguyen Thi Kim Oanh & Dinh Phan My", "level": 1, "source_file": "Nguyen_Thi_Kim_Oanh__Dinh_Phan_My_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Thi_Kim_Oanh__Dinh_Phan_My_1_1.md", "summary_file": "Nguyen_Thi_Kim_Oanh__Dinh_Phan_My_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 3, "x": 130.0, "y": 170}, {"id": "Nguyen_Thi_Kim_Oanh__Dinh_Phan_My_1_2", "label": "Nguyen_Thi_Kim_Oanh__Di\u2026", "full_label": "Nguyen_Thi_Kim_Oanh__Dinh_Phan_My_1_2", "short_label": "Nguyen_Thi_Kim_Oanh__Di\u2026", "title": "Nguyen_Thi_Kim_Oanh__Dinh_Phan_My_1_2", "level": 46, "source_file": "Nguyen_Thi_Kim_Oanh__Dinh_Phan_My_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Thi_Kim_Oanh__Dinh_Phan_My_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 7820}, {"id": "Nguyen Thi NgocLan & Ly Van That", "label": "Nguyen Thi NgocLan & Ly\u2026", "full_label": "Nguyen Thi NgocLan & Ly Van That", "short_label": "Nguyen Thi NgocLan & Ly\u2026", "title": "Nguyen Thi NgocLan & Ly Van That", "level": 1, "source_file": "Nguyen_Thi_NgocLan__Ly_Van_That_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Thi_NgocLan__Ly_Van_That_1_1.md", "summary_file": "Nguyen_Thi_NgocLan__Ly_Van_That_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 4, "x": 390.0, "y": 170}, {"id": "Nguyen_Thi_NgocLan__Ly_Van_That_1_2", "label": "Nguyen_Thi_NgocLan__Ly_\u2026", "full_label": "Nguyen_Thi_NgocLan__Ly_Van_That_1_2", "short_label": "Nguyen_Thi_NgocLan__Ly_\u2026", "title": "Nguyen_Thi_NgocLan__Ly_Van_That_1_2", "level": 47, "source_file": "Nguyen_Thi_NgocLan__Ly_Van_That_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Thi_NgocLan__Ly_Van_That_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 7990}, {"id": "Nguyen Thuy Anh Katelynn", "label": "Nguyen Thuy Anh Katelynn", "full_label": "Nguyen Thuy Anh Katelynn", "short_label": "Nguyen Thuy Anh Katelynn", "title": "Nguyen Thuy Anh Katelynn", "level": 3, "source_file": "Nguyen_Thuy_Anh_Katelynn_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Thuy_Anh_Katelynn_1_1.md", "summary_file": "Nguyen_Thuy_Anh_Katelynn_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": -130.0, "y": 510}, {"id": "Nguyen_Thuy_Anh_Katelynn_1_2", "label": "Nguyen_Thuy_Anh_Katelyn\u2026", "full_label": "Nguyen_Thuy_Anh_Katelynn_1_2", "short_label": "Nguyen_Thuy_Anh_Katelyn\u2026", "title": "Nguyen_Thuy_Anh_Katelynn_1_2", "level": 48, "source_file": "Nguyen_Thuy_Anh_Katelynn_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Thuy_Anh_Katelynn_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 8160}, {"id": "Nguyen Thuy Diep & Nguyen Muoi Hai", "label": "Nguyen Thuy Diep & Nguy\u2026", "full_label": "Nguyen Thuy Diep & Nguyen Muoi Hai", "short_label": "Nguyen Thuy Diep & Nguy\u2026", "title": "Nguyen Thuy Diep & Nguyen Muoi Hai", "level": 1, "source_file": "Nguyen_Thuy_Diep__Nguyen_Muoi_Hai_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Thuy_Diep__Nguyen_Muoi_Hai_1_1.md", "summary_file": "Nguyen_Thuy_Diep__Nguyen_Muoi_Hai_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 3, "x": 650.0, "y": 170}, {"id": "Nguyen Tracy (C)", "label": "Nguyen Tracy (C)", "full_label": "Nguyen Tracy (C)", "short_label": "Nguyen Tracy (C)", "title": "Nguyen Tracy (C)", "level": 2, "source_file": "Nguyen_Tracy_C_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Tracy_C_1_1.md", "summary_file": "Nguyen_Tracy_C_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 390.0, "y": 340}, {"id": "Nguyen_Thuy_Diep__Nguyen_Muoi_Hai_1_2", "label": "Nguyen_Thuy_Diep__Nguye\u2026", "full_label": "Nguyen_Thuy_Diep__Nguyen_Muoi_Hai_1_2", "short_label": "Nguyen_Thuy_Diep__Nguye\u2026", "title": "Nguyen_Thuy_Diep__Nguyen_Muoi_Hai_1_2", "level": 49, "source_file": "Nguyen_Thuy_Diep__Nguyen_Muoi_Hai_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Thuy_Diep__Nguyen_Muoi_Hai_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 8330}, {"id": "Nguyen_Tiffany_1_2", "label": "Nguyen_Tiffany_1_2", "full_label": "Nguyen_Tiffany_1_2", "short_label": "Nguyen_Tiffany_1_2", "title": "Nguyen_Tiffany_1_2", "level": 50, "source_file": "Nguyen_Tiffany_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Tiffany_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 8500}, {"id": "Nguyen_Tracy_C_1_2", "label": "Nguyen_Tracy_C_1_2", "full_label": "Nguyen_Tracy_C_1_2", "short_label": "Nguyen_Tracy_C_1_2", "title": "Nguyen_Tracy_C_1_2", "level": 51, "source_file": "Nguyen_Tracy_C_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Tracy_C_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 8670}, {"id": "Nguyen Tuyet & Le Dat", "label": "Nguyen Tuyet & Le Dat", "full_label": "Nguyen Tuyet & Le Dat", "short_label": "Nguyen Tuyet & Le Dat", "title": "Nguyen Tuyet & Le Dat", "level": 1, "source_file": "Nguyen_Tuyet__Le_Dat_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Tuyet__Le_Dat_1_1.md", "summary_file": "Nguyen_Tuyet__Le_Dat_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 2, "x": 910.0, "y": 170}, {"id": "Nguyen_Tuyet__Le_Dat_1_2", "label": "Nguyen_Tuyet__Le_Dat_1_2", "full_label": "Nguyen_Tuyet__Le_Dat_1_2", "short_label": "Nguyen_Tuyet__Le_Dat_1_2", "title": "Nguyen_Tuyet__Le_Dat_1_2", "level": 52, "source_file": "Nguyen_Tuyet__Le_Dat_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Tuyet__Le_Dat_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 8840}, {"id": "Nguyen Van Vinh & Vu Thi Hien", "label": "Nguyen Van Vinh & Vu Th\u2026", "full_label": "Nguyen Van Vinh & Vu Thi Hien", "short_label": "Nguyen Van Vinh & Vu Th\u2026", "title": "Nguyen Van Vinh & Vu Thi Hien", "level": 0, "source_file": "Nguyen_Van_Vinh__Vu_Thi_Hien_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Van_Vinh__Vu_Thi_Hien_1_1.md", "summary_file": "Nguyen_Van_Vinh__Vu_Thi_Hien_1_2.md", "summary_lines": [], "in_degree": 0, "out_degree": 10, "x": 0.0, "y": 0}, {"id": "Nguyen_Van_Vinh__Vu_Thi_Hien_1_2", "label": "Nguyen_Van_Vinh__Vu_Thi\u2026", "full_label": "Nguyen_Van_Vinh__Vu_Thi_Hien_1_2", "short_label": "Nguyen_Van_Vinh__Vu_Thi\u2026", "title": "Nguyen_Van_Vinh__Vu_Thi_Hien_1_2", "level": 53, "source_file": "Nguyen_Van_Vinh__Vu_Thi_Hien_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Nguyen_Van_Vinh__Vu_Thi_Hien_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 9010}, {"id": "PhamNguyen_Kim__Nguyen_Trung_1_2", "label": "PhamNguyen_Kim__Nguyen_\u2026", "full_label": "PhamNguyen_Kim__Nguyen_Trung_1_2", "short_label": "PhamNguyen_Kim__Nguyen_\u2026", "title": "PhamNguyen_Kim__Nguyen_Trung_1_2", "level": 54, "source_file": "PhamNguyen_Kim__Nguyen_Trung_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/PhamNguyen_Kim__Nguyen_Trung_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 9180}, {"id": "Pham Binh-Sou 3", "label": "Pham Binh-Sou 3", "full_label": "Pham Binh-Sou 3", "short_label": "Pham Binh-Sou 3", "title": "Pham Binh-Sou 3", "level": 3, "source_file": "Pham_Binh-Sou_3_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Binh-Sou_3_1_1.md", "summary_file": "Pham_Binh-Sou_3_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 910.0, "y": 510}, {"id": "Pham_Binh-Sou_3_1_2", "label": "Pham_Binh-Sou_3_1_2", "full_label": "Pham_Binh-Sou_3_1_2", "short_label": "Pham_Binh-Sou_3_1_2", "title": "Pham_Binh-Sou_3_1_2", "level": 55, "source_file": "Pham_Binh-Sou_3_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Binh-Sou_3_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 9350}, {"id": "Pham Binh-Sou 4", "label": "Pham Binh-Sou 4", "full_label": "Pham Binh-Sou 4", "short_label": "Pham Binh-Sou 4", "title": "Pham Binh-Sou 4", "level": 3, "source_file": "Pham_Binh-Sou_4_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Binh-Sou_4_1_1.md", "summary_file": "Pham_Binh-Sou_4_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 1170.0, "y": 510}, {"id": "Pham_Binh-Sou_4_1_2", "label": "Pham_Binh-Sou_4_1_2", "full_label": "Pham_Binh-Sou_4_1_2", "short_label": "Pham_Binh-Sou_4_1_2", "title": "Pham_Binh-Sou_4_1_2", "level": 56, "source_file": "Pham_Binh-Sou_4_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Binh-Sou_4_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 9520}, {"id": "Pham Sheila", "label": "Pham Sheila", "full_label": "Pham Sheila", "short_label": "Pham Sheila", "title": "Pham Sheila", "level": 3, "source_file": "Pham_Sheila_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Sheila_1_1.md", "summary_file": "Pham_Sheila_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 3250.0, "y": 510}, {"id": "Pham Xander", "label": "Pham Xander", "full_label": "Pham Xander", "short_label": "Pham Xander", "title": "Pham Xander", "level": 3, "source_file": "Pham_Xander_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Xander_1_1.md", "summary_file": "Pham_Xander_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 3510.0, "y": 510}, {"id": "Pham Binh-Sou 5", "label": "Pham Binh-Sou 5", "full_label": "Pham Binh-Sou 5", "short_label": "Pham Binh-Sou 5", "title": "Pham Binh-Sou 5", "level": 3, "source_file": "Pham__Binh-Sou_5_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham__Binh-Sou_5_1_1.md", "summary_file": "Pham__Binh-Sou_5_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 1430.0, "y": 510}, {"id": "Pham Ellie", "label": "Pham Ellie", "full_label": "Pham Ellie", "short_label": "Pham Ellie", "title": "Pham Ellie", "level": 3, "source_file": "Pham_Ellie_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Ellie_1_1.md", "summary_file": "Pham_Ellie_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 1690.0, "y": 510}, {"id": "Pham_Binh__Pham_Sou_1_2", "label": "Pham_Binh__Pham_Sou_1_2", "full_label": "Pham_Binh__Pham_Sou_1_2", "short_label": "Pham_Binh__Pham_Sou_1_2", "title": "Pham_Binh__Pham_Sou_1_2", "level": 57, "source_file": "Pham_Binh__Pham_Sou_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Binh__Pham_Sou_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 9690}, {"id": "Pham_Brian__Pham_1_2", "label": "Pham_Brian__Pham_1_2", "full_label": "Pham_Brian__Pham_1_2", "short_label": "Pham_Brian__Pham_1_2", "title": "Pham_Brian__Pham_1_2", "level": 58, "source_file": "Pham_Brian__Pham_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Brian__Pham_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 9860}, {"id": "Pham_Ellie_1_2", "label": "Pham_Ellie_1_2", "full_label": "Pham_Ellie_1_2", "short_label": "Pham_Ellie_1_2", "title": "Pham_Ellie_1_2", "level": 59, "source_file": "Pham_Ellie_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Ellie_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 10030}, {"id": "Pham Huy 1", "label": "Pham Huy 1", "full_label": "Pham Huy 1", "short_label": "Pham Huy 1", "title": "Pham Huy 1", "level": 3, "source_file": "Pham_Huy_1_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Huy_1_1_1.md", "summary_file": "Pham_Huy_1_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 1950.0, "y": 510}, {"id": "Pham Huy 2", "label": "Pham Huy 2", "full_label": "Pham Huy 2", "short_label": "Pham Huy 2", "title": "Pham Huy 2", "level": 3, "source_file": "Pham_Huy_2_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Huy_2_1_1.md", "summary_file": "Pham_Huy_2_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 2210.0, "y": 510}, {"id": "Pham_Huy_1_1_2", "label": "Pham_Huy_1_1_2", "full_label": "Pham_Huy_1_1_2", "short_label": "Pham_Huy_1_1_2", "title": "Pham_Huy_1_1_2", "level": 60, "source_file": "Pham_Huy_1_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Huy_1_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 10200}, {"id": "Pham_Huy_1_2", "label": "Pham_Huy_1_2", "full_label": "Pham_Huy_1_2", "short_label": "Pham_Huy_1_2", "title": "Pham_Huy_1_2", "level": 61, "source_file": "Pham_Huy_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Huy_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 10370}, {"id": "Pham_Huy_2_1_2", "label": "Pham_Huy_2_1_2", "full_label": "Pham_Huy_2_1_2", "short_label": "Pham_Huy_2_1_2", "title": "Pham_Huy_2_1_2", "level": 62, "source_file": "Pham_Huy_2_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Huy_2_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 10540}, {"id": "Pham Jade", "label": "Pham Jade", "full_label": "Pham Jade", "short_label": "Pham Jade", "title": "Pham Jade", "level": 3, "source_file": "Pham_Jade_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Jade_1_1.md", "summary_file": "Pham_Jade_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 2470.0, "y": 510}, {"id": "Pham_Jade_1_2", "label": "Pham_Jade_1_2", "full_label": "Pham_Jade_1_2", "short_label": "Pham_Jade_1_2", "title": "Pham_Jade_1_2", "level": 63, "source_file": "Pham_Jade_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Jade_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 10710}, {"id": "Pham James-Sedalia 1", "label": "Pham James-Sedalia 1", "full_label": "Pham James-Sedalia 1", "short_label": "Pham James-Sedalia 1", "title": "Pham James-Sedalia 1", "level": 3, "source_file": "Pham_James-Sedalia_1_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_James-Sedalia_1_1_1.md", "summary_file": "Pham_James-Sedalia_1_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 2730.0, "y": 510}, {"id": "Pham_James-Sedalia_1_1_2", "label": "Pham_James-Sedalia_1_1_2", "full_label": "Pham_James-Sedalia_1_1_2", "short_label": "Pham_James-Sedalia_1_1_2", "title": "Pham_James-Sedalia_1_1_2", "level": 64, "source_file": "Pham_James-Sedalia_1_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_James-Sedalia_1_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 10880}, {"id": "Pham Jewel", "label": "Pham Jewel", "full_label": "Pham Jewel", "short_label": "Pham Jewel", "title": "Pham Jewel", "level": 3, "source_file": "Pham_Jewel_1_1.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Jewel_1_1.md", "summary_file": "Pham_Jewel_1_2.md", "summary_lines": [], "in_degree": 1, "out_degree": 0, "x": 2990.0, "y": 510}, {"id": "Pham_Jewel_1_2", "label": "Pham_Jewel_1_2", "full_label": "Pham_Jewel_1_2", "short_label": "Pham_Jewel_1_2", "title": "Pham_Jewel_1_2", "level": 65, "source_file": "Pham_Jewel_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Jewel_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 11050}, {"id": "Pham_Ngoc_James__StevensPham_Sedalia_1_2", "label": "Pham_Ngoc_James__Steven\u2026", "full_label": "Pham_Ngoc_James__StevensPham_Sedalia_1_2", "short_label": "Pham_Ngoc_James__Steven\u2026", "title": "Pham_Ngoc_James__StevensPham_Sedalia_1_2", "level": 66, "source_file": "Pham_Ngoc_James__StevensPham_Sedalia_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Ngoc_James__StevensPham_Sedalia_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 11220}, {"id": "Pham_Phuong__Mai_1_2", "label": "Pham_Phuong__Mai_1_2", "full_label": "Pham_Phuong__Mai_1_2", "short_label": "Pham_Phuong__Mai_1_2", "title": "Pham_Phuong__Mai_1_2", "level": 67, "source_file": "Pham_Phuong__Mai_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Phuong__Mai_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 11390}, {"id": "Pham_Sheila_1_2", "label": "Pham_Sheila_1_2", "full_label": "Pham_Sheila_1_2", "short_label": "Pham_Sheila_1_2", "title": "Pham_Sheila_1_2", "level": 68, "source_file": "Pham_Sheila_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Sheila_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 11560}, {"id": "Pham_Xander_1_2", "label": "Pham_Xander_1_2", "full_label": "Pham_Xander_1_2", "short_label": "Pham_Xander_1_2", "title": "Pham_Xander_1_2", "level": 69, "source_file": "Pham_Xander_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham_Xander_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 11730}, {"id": "Pham__Binh-Sou_5_1_2", "label": "Pham__Binh-Sou_5_1_2", "full_label": "Pham__Binh-Sou_5_1_2", "short_label": "Pham__Binh-Sou_5_1_2", "title": "Pham__Binh-Sou_5_1_2", "level": 70, "source_file": "Pham__Binh-Sou_5_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Pham__Binh-Sou_5_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 11900}, {"id": "QuachLeung_Carmen__Leung_Simon_1_2", "label": "QuachLeung_Carmen__Leun\u2026", "full_label": "QuachLeung_Carmen__Leung_Simon_1_2", "short_label": "QuachLeung_Carmen__Leun\u2026", "title": "QuachLeung_Carmen__Leung_Simon_1_2", "level": 71, "source_file": "QuachLeung_Carmen__Leung_Simon_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/QuachLeung_Carmen__Leung_Simon_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 12070}, {"id": "Quach_Camilla_1_2", "label": "Quach_Camilla_1_2", "full_label": "Quach_Camilla_1_2", "short_label": "Quach_Camilla_1_2", "title": "Quach_Camilla_1_2", "level": 72, "source_file": "Quach_Camilla_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Quach_Camilla_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 12240}, {"id": "Quach_Carline__Jeffrey_1_2", "label": "Quach_Carline__Jeffrey_\u2026", "full_label": "Quach_Carline__Jeffrey_1_2", "short_label": "Quach_Carline__Jeffrey_\u2026", "title": "Quach_Carline__Jeffrey_1_2", "level": 73, "source_file": "Quach_Carline__Jeffrey_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Quach_Carline__Jeffrey_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 12410}, {"id": "Family Tree Graph Server", "label": "Family Tree Graph Server", "full_label": "Family Tree Graph Server", "short_label": "Family Tree Graph Server", "title": "Family Tree Graph Server", "level": 74, "source_file": "README.md", "source_path": "/home/viet/workspace/nerd/family_tree/README.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 12580}, {"id": "Tsurumoto_Otto_1_2", "label": "Tsurumoto_Otto_1_2", "full_label": "Tsurumoto_Otto_1_2", "short_label": "Tsurumoto_Otto_1_2", "title": "Tsurumoto_Otto_1_2", "level": 75, "source_file": "Tsurumoto_Otto_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Tsurumoto_Otto_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 12750}, {"id": "Tsurumoto_Rocky_1_2", "label": "Tsurumoto_Rocky_1_2", "full_label": "Tsurumoto_Rocky_1_2", "short_label": "Tsurumoto_Rocky_1_2", "title": "Tsurumoto_Rocky_1_2", "level": 76, "source_file": "Tsurumoto_Rocky_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Tsurumoto_Rocky_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 12920}, {"id": "Wilson_AnhThu-William_2_1_2", "label": "Wilson_AnhThu-William_2\u2026", "full_label": "Wilson_AnhThu-William_2_1_2", "short_label": "Wilson_AnhThu-William_2\u2026", "title": "Wilson_AnhThu-William_2_1_2", "level": 77, "source_file": "Wilson_AnhThu-William_2_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Wilson_AnhThu-William_2_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 13090}, {"id": "Wilson_Ayame_1_2", "label": "Wilson_Ayame_1_2", "full_label": "Wilson_Ayame_1_2", "short_label": "Wilson_Ayame_1_2", "title": "Wilson_Ayame_1_2", "level": 78, "source_file": "Wilson_Ayame_1_2.md", "source_path": "/home/viet/workspace/nerd/family_tree/Wilson_Ayame_1_2.md", "summary_file": "", "summary_lines": [], "in_degree": 0, "out_degree": 0, "x": 0.0, "y": 13260}];
+    let edgesData = [{"id": "Dinh Hoang Viet & Nguyen Hang->Dinh Ivy", "from": "Dinh Hoang Viet & Nguyen Hang", "to": "Dinh Ivy", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Dinh Hoang Viet & Nguyen Hang \u2192 Dinh Ivy<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Dinh Hoang Viet & Nguyen Hang->Dinh Chloe", "from": "Dinh Hoang Viet & Nguyen Hang", "to": "Dinh Chloe", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Dinh Hoang Viet & Nguyen Hang \u2192 Dinh Chloe<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Ly/Wilson Ngoc AnhThu (Mo) & Wilson William->Wilson Ayame", "from": "Ly/Wilson Ngoc AnhThu (Mo) & Wilson William", "to": "Wilson Ayame", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Ly/Wilson Ngoc AnhThu (Mo) & Wilson William \u2192 Wilson Ayame<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Ly/Wilson Ngoc AnhThu (Mo) & Wilson William->Wilson AnhThu-William 2", "from": "Ly/Wilson Ngoc AnhThu (Mo) & Wilson William", "to": "Wilson AnhThu-William 2", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Ly/Wilson Ngoc AnhThu (Mo) & Wilson William \u2192 Wilson AnhThu-William 2<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Ly Chau Khoa (Bich To)->Dinh Gia Bao Anh", "from": "Ly Chau Khoa (Bich To)", "to": "Dinh Gia Bao Anh", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Ly Chau Khoa (Bich To) \u2192 Dinh Gia Bao Anh<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Ly Chau Khoa (Bich To)->Dinh Gia Bao Tran", "from": "Ly Chau Khoa (Bich To)", "to": "Dinh Gia Bao Tran", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Ly Chau Khoa (Bich To) \u2192 Dinh Gia Bao Tran<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen/DiNardo Ngoc Amy & DiNardo Robert Anthony->DiNardo Anh Ly", "from": "Nguyen/DiNardo Ngoc Amy & DiNardo Robert Anthony", "to": "DiNardo Anh Ly", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Nguyen/DiNardo Ngoc Amy & DiNardo Robert Anthony \u2192 DiNardo Anh Ly<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen/Fair Vy & Fair Chris->Fair Ethan", "from": "Nguyen/Fair Vy & Fair Chris", "to": "Fair Ethan", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Nguyen/Fair Vy & Fair Chris \u2192 Fair Ethan<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen/Fair Vy & Fair Chris->Fair Allie", "from": "Nguyen/Fair Vy & Fair Chris", "to": "Fair Allie", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Nguyen/Fair Vy & Fair Chris \u2192 Fair Allie<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen/Jones Phu & Jones Kyle->Jones Knox", "from": "Nguyen/Jones Phu & Jones Kyle", "to": "Jones Knox", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Nguyen/Jones Phu & Jones Kyle \u2192 Jones Knox<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen/Quach Duyen & Quach Tuong->Quach/Leung Carmen & Leung Simon", "from": "Nguyen/Quach Duyen & Quach Tuong", "to": "Quach/Leung Carmen & Leung Simon", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Nguyen/Quach Duyen & Quach Tuong \u2192 Quach/Leung Carmen & Leung Simon<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen/Quach Duyen & Quach Tuong->Quach Carline & Jeffrey", "from": "Nguyen/Quach Duyen & Quach Tuong", "to": "Quach Carline & Jeffrey", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Nguyen/Quach Duyen & Quach Tuong \u2192 Quach Carline & Jeffrey<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen/Quach Duyen & Quach Tuong->Quach Camilla", "from": "Nguyen/Quach Duyen & Quach Tuong", "to": "Quach Camilla", "relation": "parent of", "order": 3, "label": "parent of [3]", "full_label": "parent of [3]", "title": "Nguyen/Quach Duyen & Quach Tuong \u2192 Quach Camilla<br>relation: parent of<br>order: 3", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Quach/Leung Carmen & Leung Simon->Leung Dexter", "from": "Quach/Leung Carmen & Leung Simon", "to": "Leung Dexter", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Quach/Leung Carmen & Leung Simon \u2192 Leung Dexter<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Quach/Leung Carmen & Leung Simon->Leung Serena", "from": "Quach/Leung Carmen & Leung Simon", "to": "Leung Serena", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Quach/Leung Carmen & Leung Simon \u2192 Leung Serena<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen/Tsurumoto Thuy Kristina & Tsurumoto K-husband->Tsurumoto Otto", "from": "Nguyen/Tsurumoto Thuy Kristina & Tsurumoto K-husband", "to": "Tsurumoto Otto", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Nguyen/Tsurumoto Thuy Kristina & Tsurumoto K-husband \u2192 Tsurumoto Otto<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen/Tsurumoto Thuy Kristina & Tsurumoto K-husband->Tsurumoto Rocky", "from": "Nguyen/Tsurumoto Thuy Kristina & Tsurumoto K-husband", "to": "Tsurumoto Rocky", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Nguyen/Tsurumoto Thuy Kristina & Tsurumoto K-husband \u2192 Tsurumoto Rocky<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Hanh & Nguyen Tang->Nguyen/Fair Vy & Fair Chris", "from": "Nguyen Hanh & Nguyen Tang", "to": "Nguyen/Fair Vy & Fair Chris", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Nguyen Hanh & Nguyen Tang \u2192 Nguyen/Fair Vy & Fair Chris<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Hanh & Nguyen Tang->Nguyen Khanh (Bim) & /Nguyen Kimberly", "from": "Nguyen Hanh & Nguyen Tang", "to": "Nguyen Khanh (Bim) & /Nguyen Kimberly", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Nguyen Hanh & Nguyen Tang \u2192 Nguyen Khanh (Bim) & /Nguyen Kimberly<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Hanh & Nguyen Tang->Nguyen/Jones Phu & Jones Kyle", "from": "Nguyen Hanh & Nguyen Tang", "to": "Nguyen/Jones Phu & Jones Kyle", "relation": "parent of", "order": 3, "label": "parent of [3]", "full_label": "parent of [3]", "title": "Nguyen Hanh & Nguyen Tang \u2192 Nguyen/Jones Phu & Jones Kyle<br>relation: parent of<br>order: 3", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Hanh & Nguyen Tang->Nguyen Johnny & Gordiyenko/ Natalia", "from": "Nguyen Hanh & Nguyen Tang", "to": "Nguyen Johnny & Gordiyenko/ Natalia", "relation": "parent of", "order": 4, "label": "parent of [4]", "full_label": "parent of [4]", "title": "Nguyen Hanh & Nguyen Tang \u2192 Nguyen Johnny & Gordiyenko/ Natalia<br>relation: parent of<br>order: 4", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Khanh (Bim) & /Nguyen Kimberly->Nguyen Mai Kayla", "from": "Nguyen Khanh (Bim) & /Nguyen Kimberly", "to": "Nguyen Mai Kayla", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Nguyen Khanh (Bim) & /Nguyen Kimberly \u2192 Nguyen Mai Kayla<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Khanh (Bim) & /Nguyen Kimberly->Nguyen Sloan", "from": "Nguyen Khanh (Bim) & /Nguyen Kimberly", "to": "Nguyen Sloan", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Nguyen Khanh (Bim) & /Nguyen Kimberly \u2192 Nguyen Sloan<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Khanh (Bim) & /Nguyen Kimberly->Nguyen Dax", "from": "Nguyen Khanh (Bim) & /Nguyen Kimberly", "to": "Nguyen Dax", "relation": "parent of", "order": 3, "label": "parent of [3]", "full_label": "parent of [3]", "title": "Nguyen Khanh (Bim) & /Nguyen Kimberly \u2192 Nguyen Dax<br>relation: parent of<br>order: 3", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Hau & Pham Chinh->Pham/Nguyen Kim & Nguyen Trung", "from": "Nguyen Hau & Pham Chinh", "to": "Pham/Nguyen Kim & Nguyen Trung", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Nguyen Hau & Pham Chinh \u2192 Pham/Nguyen Kim & Nguyen Trung<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Hau & Pham Chinh->Pham Phuong & Mai", "from": "Nguyen Hau & Pham Chinh", "to": "Pham Phuong & Mai", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Nguyen Hau & Pham Chinh \u2192 Pham Phuong & Mai<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Hau & Pham Chinh->Pham Binh & /Pham Sou", "from": "Nguyen Hau & Pham Chinh", "to": "Pham Binh & /Pham Sou", "relation": "parent of", "order": 3, "label": "parent of [3]", "full_label": "parent of [3]", "title": "Nguyen Hau & Pham Chinh \u2192 Pham Binh & /Pham Sou<br>relation: parent of<br>order: 3", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Hau & Pham Chinh->Pham Huy", "from": "Nguyen Hau & Pham Chinh", "to": "Pham Huy", "relation": "parent of", "order": 4, "label": "parent of [4]", "full_label": "parent of [4]", "title": "Nguyen Hau & Pham Chinh \u2192 Pham Huy<br>relation: parent of<br>order: 4", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Hau & Pham Chinh->Pham Ngoc James & Stevens/Pham Sedalia", "from": "Nguyen Hau & Pham Chinh", "to": "Pham Ngoc James & Stevens/Pham Sedalia", "relation": "parent of", "order": 5, "label": "parent of [5]", "full_label": "parent of [5]", "title": "Nguyen Hau & Pham Chinh \u2192 Pham Ngoc James & Stevens/Pham Sedalia<br>relation: parent of<br>order: 5", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Hau & Pham Chinh->Pham Brian & /Pham", "from": "Nguyen Hau & Pham Chinh", "to": "Pham Brian & /Pham", "relation": "parent of", "order": 6, "label": "parent of [6]", "full_label": "parent of [6]", "title": "Nguyen Hau & Pham Chinh \u2192 Pham Brian & /Pham<br>relation: parent of<br>order: 6", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Pham/Nguyen Kim & Nguyen Trung->Nguyen/Tsurumoto Thuy Kristina & Tsurumoto K-husband", "from": "Pham/Nguyen Kim & Nguyen Trung", "to": "Nguyen/Tsurumoto Thuy Kristina & Tsurumoto K-husband", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Pham/Nguyen Kim & Nguyen Trung \u2192 Nguyen/Tsurumoto Thuy Kristina & Tsurumoto K-husband<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Pham/Nguyen Kim & Nguyen Trung->Nguyen Thuy Anh Katelynn", "from": "Pham/Nguyen Kim & Nguyen Trung", "to": "Nguyen Thuy Anh Katelynn", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Pham/Nguyen Kim & Nguyen Trung \u2192 Nguyen Thuy Anh Katelynn<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Pham/Nguyen Kim & Nguyen Trung->Nguyen/Rowden Josephy & Rowden Jesse", "from": "Pham/Nguyen Kim & Nguyen Trung", "to": "Nguyen/Rowden Josephy & Rowden Jesse", "relation": "parent of", "order": 3, "label": "parent of [3]", "full_label": "parent of [3]", "title": "Pham/Nguyen Kim & Nguyen Trung \u2192 Nguyen/Rowden Josephy & Rowden Jesse<br>relation: parent of<br>order: 3", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Pham/Nguyen Kim & Nguyen Trung->Nguyen Jason", "from": "Pham/Nguyen Kim & Nguyen Trung", "to": "Nguyen Jason", "relation": "parent of", "order": 4, "label": "parent of [4]", "full_label": "parent of [4]", "title": "Pham/Nguyen Kim & Nguyen Trung \u2192 Nguyen Jason<br>relation: parent of<br>order: 4", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Pham Phuong & Mai->Pham Jade", "from": "Pham Phuong & Mai", "to": "Pham Jade", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Pham Phuong & Mai \u2192 Pham Jade<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Pham Phuong & Mai->Pham Jewel", "from": "Pham Phuong & Mai", "to": "Pham Jewel", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Pham Phuong & Mai \u2192 Pham Jewel<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Pham Binh & /Pham Sou->Pham Sheila", "from": "Pham Binh & /Pham Sou", "to": "Pham Sheila", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Pham Binh & /Pham Sou \u2192 Pham Sheila<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Pham Binh & /Pham Sou->Pham Xander", "from": "Pham Binh & /Pham Sou", "to": "Pham Xander", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Pham Binh & /Pham Sou \u2192 Pham Xander<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Pham Binh & /Pham Sou->Pham Binh-Sou 3", "from": "Pham Binh & /Pham Sou", "to": "Pham Binh-Sou 3", "relation": "parent of", "order": 3, "label": "parent of [3]", "full_label": "parent of [3]", "title": "Pham Binh & /Pham Sou \u2192 Pham Binh-Sou 3<br>relation: parent of<br>order: 3", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Pham Binh & /Pham Sou->Pham Binh-Sou 4", "from": "Pham Binh & /Pham Sou", "to": "Pham Binh-Sou 4", "relation": "parent of", "order": 4, "label": "parent of [4]", "full_label": "parent of [4]", "title": "Pham Binh & /Pham Sou \u2192 Pham Binh-Sou 4<br>relation: parent of<br>order: 4", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Pham Binh & /Pham Sou->Pham Binh-Sou 5", "from": "Pham Binh & /Pham Sou", "to": "Pham Binh-Sou 5", "relation": "parent of", "order": 5, "label": "parent of [5]", "full_label": "parent of [5]", "title": "Pham Binh & /Pham Sou \u2192 Pham Binh-Sou 5<br>relation: parent of<br>order: 5", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Pham Binh & /Pham Sou->Pham Ellie", "from": "Pham Binh & /Pham Sou", "to": "Pham Ellie", "relation": "parent of", "order": 6, "label": "parent of [6]", "full_label": "parent of [6]", "title": "Pham Binh & /Pham Sou \u2192 Pham Ellie<br>relation: parent of<br>order: 6", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Pham Huy->Pham Huy 1", "from": "Pham Huy", "to": "Pham Huy 1", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Pham Huy \u2192 Pham Huy 1<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Pham Huy->Pham Huy 2", "from": "Pham Huy", "to": "Pham Huy 2", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Pham Huy \u2192 Pham Huy 2<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Pham Ngoc James & Stevens/Pham Sedalia->Pham James-Sedalia 1", "from": "Pham Ngoc James & Stevens/Pham Sedalia", "to": "Pham James-Sedalia 1", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Pham Ngoc James & Stevens/Pham Sedalia \u2192 Pham James-Sedalia 1<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Hoang & Changkachith Thit->/Jordan Rasphoumy Lily & Jordan Dalton Jessie", "from": "Nguyen Hoang & Changkachith Thit", "to": "/Jordan Rasphoumy Lily & Jordan Dalton Jessie", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Nguyen Hoang & Changkachith Thit \u2192 /Jordan Rasphoumy Lily & Jordan Dalton Jessie<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Khuong & Le Quynh & Tai Cathy->Nguyen Max", "from": "Nguyen Khuong & Le Quynh & Tai Cathy", "to": "Nguyen Max", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Nguyen Khuong & Le Quynh & Tai Cathy \u2192 Nguyen Max<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Khuong & Le Quynh & Tai Cathy->Nguyen Tiffany", "from": "Nguyen Khuong & Le Quynh & Tai Cathy", "to": "Nguyen Tiffany", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Nguyen Khuong & Le Quynh & Tai Cathy \u2192 Nguyen Tiffany<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Ngoc Anh & Nguyen Huu Cong->Nguyen Huu Benjamin", "from": "Nguyen Ngoc Anh & Nguyen Huu Cong", "to": "Nguyen Huu Benjamin", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Nguyen Ngoc Anh & Nguyen Huu Cong \u2192 Nguyen Huu Benjamin<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Ngoc Anh & Nguyen Huu Cong->Nguyen/DiNardo Ngoc Amy & DiNardo Robert Anthony", "from": "Nguyen Ngoc Anh & Nguyen Huu Cong", "to": "Nguyen/DiNardo Ngoc Amy & DiNardo Robert Anthony", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Nguyen Ngoc Anh & Nguyen Huu Cong \u2192 Nguyen/DiNardo Ngoc Amy & DiNardo Robert Anthony<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Thi Kim Oanh & Dinh Phan My->Dinh Hoang Viet & Nguyen Hang", "from": "Nguyen Thi Kim Oanh & Dinh Phan My", "to": "Dinh Hoang Viet & Nguyen Hang", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Nguyen Thi Kim Oanh & Dinh Phan My \u2192 Dinh Hoang Viet & Nguyen Hang<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Thi Kim Oanh & Dinh Phan My->Dinh Nhat & Pham Gau", "from": "Nguyen Thi Kim Oanh & Dinh Phan My", "to": "Dinh Nhat & Pham Gau", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Nguyen Thi Kim Oanh & Dinh Phan My \u2192 Dinh Nhat & Pham Gau<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Thi Kim Oanh & Dinh Phan My->Dinh Kim Truc Khanh Linh", "from": "Nguyen Thi Kim Oanh & Dinh Phan My", "to": "Dinh Kim Truc Khanh Linh", "relation": "parent of", "order": 3, "label": "parent of [3]", "full_label": "parent of [3]", "title": "Nguyen Thi Kim Oanh & Dinh Phan My \u2192 Dinh Kim Truc Khanh Linh<br>relation: parent of<br>order: 3", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Thi NgocLan & Ly Van That->Ly Chau Khoa (Bich To)", "from": "Nguyen Thi NgocLan & Ly Van That", "to": "Ly Chau Khoa (Bich To)", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Nguyen Thi NgocLan & Ly Van That \u2192 Ly Chau Khoa (Bich To)<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Thi NgocLan & Ly Van That->Ly Thuy Linh (Bich Ly)", "from": "Nguyen Thi NgocLan & Ly Van That", "to": "Ly Thuy Linh (Bich Ly)", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Nguyen Thi NgocLan & Ly Van That \u2192 Ly Thuy Linh (Bich Ly)<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Thi NgocLan & Ly Van That->Ly/Wilson Ngoc AnhThu (Mo) & Wilson William", "from": "Nguyen Thi NgocLan & Ly Van That", "to": "Ly/Wilson Ngoc AnhThu (Mo) & Wilson William", "relation": "parent of", "order": 3, "label": "parent of [3]", "full_label": "parent of [3]", "title": "Nguyen Thi NgocLan & Ly Van That \u2192 Ly/Wilson Ngoc AnhThu (Mo) & Wilson William<br>relation: parent of<br>order: 3", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Thi NgocLan & Ly Van That->Ly Hoang Yen (Chiuly, Chilly)", "from": "Nguyen Thi NgocLan & Ly Van That", "to": "Ly Hoang Yen (Chiuly, Chilly)", "relation": "parent of", "order": 4, "label": "parent of [4]", "full_label": "parent of [4]", "title": "Nguyen Thi NgocLan & Ly Van That \u2192 Ly Hoang Yen (Chiuly, Chilly)<br>relation: parent of<br>order: 4", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Thuy Diep & Nguyen Muoi Hai->Nguyen Khuong & Le Quynh & Tai Cathy", "from": "Nguyen Thuy Diep & Nguyen Muoi Hai", "to": "Nguyen Khuong & Le Quynh & Tai Cathy", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Nguyen Thuy Diep & Nguyen Muoi Hai \u2192 Nguyen Khuong & Le Quynh & Tai Cathy<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Thuy Diep & Nguyen Muoi Hai->Nguyen Tracy (C)", "from": "Nguyen Thuy Diep & Nguyen Muoi Hai", "to": "Nguyen Tracy (C)", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Nguyen Thuy Diep & Nguyen Muoi Hai \u2192 Nguyen Tracy (C)<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Thuy Diep & Nguyen Muoi Hai->Nguyen Billy", "from": "Nguyen Thuy Diep & Nguyen Muoi Hai", "to": "Nguyen Billy", "relation": "parent of", "order": 3, "label": "parent of [3]", "full_label": "parent of [3]", "title": "Nguyen Thuy Diep & Nguyen Muoi Hai \u2192 Nguyen Billy<br>relation: parent of<br>order: 3", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Tuyet & Le Dat->Le Kevin", "from": "Nguyen Tuyet & Le Dat", "to": "Le Kevin", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Nguyen Tuyet & Le Dat \u2192 Le Kevin<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Tuyet & Le Dat->Le Julia", "from": "Nguyen Tuyet & Le Dat", "to": "Le Julia", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Nguyen Tuyet & Le Dat \u2192 Le Julia<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Van Vinh & Vu Thi Hien->Nguyen Hau & Pham Chinh", "from": "Nguyen Van Vinh & Vu Thi Hien", "to": "Nguyen Hau & Pham Chinh", "relation": "parent of", "order": 1, "label": "parent of [1]", "full_label": "parent of [1]", "title": "Nguyen Van Vinh & Vu Thi Hien \u2192 Nguyen Hau & Pham Chinh<br>relation: parent of<br>order: 1", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Van Vinh & Vu Thi Hien->Nguyen Hanh & Nguyen Tang", "from": "Nguyen Van Vinh & Vu Thi Hien", "to": "Nguyen Hanh & Nguyen Tang", "relation": "parent of", "order": 2, "label": "parent of [2]", "full_label": "parent of [2]", "title": "Nguyen Van Vinh & Vu Thi Hien \u2192 Nguyen Hanh & Nguyen Tang<br>relation: parent of<br>order: 2", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Van Vinh & Vu Thi Hien->Nguyen Thi NgocLan & Ly Van That", "from": "Nguyen Van Vinh & Vu Thi Hien", "to": "Nguyen Thi NgocLan & Ly Van That", "relation": "parent of", "order": 3, "label": "parent of [3]", "full_label": "parent of [3]", "title": "Nguyen Van Vinh & Vu Thi Hien \u2192 Nguyen Thi NgocLan & Ly Van That<br>relation: parent of<br>order: 3", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Van Vinh & Vu Thi Hien->Nguyen Thuy Diep & Nguyen Muoi Hai", "from": "Nguyen Van Vinh & Vu Thi Hien", "to": "Nguyen Thuy Diep & Nguyen Muoi Hai", "relation": "parent of", "order": 4, "label": "parent of [4]", "full_label": "parent of [4]", "title": "Nguyen Van Vinh & Vu Thi Hien \u2192 Nguyen Thuy Diep & Nguyen Muoi Hai<br>relation: parent of<br>order: 4", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Van Vinh & Vu Thi Hien->Nguyen/Quach Duyen & Quach Tuong", "from": "Nguyen Van Vinh & Vu Thi Hien", "to": "Nguyen/Quach Duyen & Quach Tuong", "relation": "parent of", "order": 5, "label": "parent of [5]", "full_label": "parent of [5]", "title": "Nguyen Van Vinh & Vu Thi Hien \u2192 Nguyen/Quach Duyen & Quach Tuong<br>relation: parent of<br>order: 5", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Van Vinh & Vu Thi Hien->Nguyen Thi Kim Oanh & Dinh Phan My", "from": "Nguyen Van Vinh & Vu Thi Hien", "to": "Nguyen Thi Kim Oanh & Dinh Phan My", "relation": "parent of", "order": 6, "label": "parent of [6]", "full_label": "parent of [6]", "title": "Nguyen Van Vinh & Vu Thi Hien \u2192 Nguyen Thi Kim Oanh & Dinh Phan My<br>relation: parent of<br>order: 6", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Van Vinh & Vu Thi Hien->Nguyen Hoang & Changkachith Thit", "from": "Nguyen Van Vinh & Vu Thi Hien", "to": "Nguyen Hoang & Changkachith Thit", "relation": "parent of", "order": 7, "label": "parent of [7]", "full_label": "parent of [7]", "title": "Nguyen Van Vinh & Vu Thi Hien \u2192 Nguyen Hoang & Changkachith Thit<br>relation: parent of<br>order: 7", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Van Vinh & Vu Thi Hien->Nguyen Ngoc Anh & Nguyen Huu Cong", "from": "Nguyen Van Vinh & Vu Thi Hien", "to": "Nguyen Ngoc Anh & Nguyen Huu Cong", "relation": "parent of", "order": 8, "label": "parent of [8]", "full_label": "parent of [8]", "title": "Nguyen Van Vinh & Vu Thi Hien \u2192 Nguyen Ngoc Anh & Nguyen Huu Cong<br>relation: parent of<br>order: 8", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Van Vinh & Vu Thi Hien->Nguyen Tuyet & Le Dat", "from": "Nguyen Van Vinh & Vu Thi Hien", "to": "Nguyen Tuyet & Le Dat", "relation": "parent of", "order": 9, "label": "parent of [9]", "full_label": "parent of [9]", "title": "Nguyen Van Vinh & Vu Thi Hien \u2192 Nguyen Tuyet & Le Dat<br>relation: parent of<br>order: 9", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}, {"id": "Nguyen Van Vinh & Vu Thi Hien->Nguyen Bich", "from": "Nguyen Van Vinh & Vu Thi Hien", "to": "Nguyen Bich", "relation": "parent of", "order": 10, "label": "parent of [10]", "full_label": "parent of [10]", "title": "Nguyen Van Vinh & Vu Thi Hien \u2192 Nguyen Bich<br>relation: parent of<br>order: 10", "base_color": "#848484", "incoming_color": "#2563eb", "outgoing_color": "#dc2626"}];
+    let children = {"DiNardo Anh Ly": [], "DiNardo_Anh_Ly_1_2": [], "Dinh Chloe": [], "Dinh_Chloe_1_2": [], "Dinh Gia Bao Anh": [], "Dinh_Gia_Bao_Anh_1_2": [], "Dinh Gia Bao Tran": [], "Dinh_Gia_Bao_Tran_1_2": [], "Dinh Hoang Viet & Nguyen Hang": ["Dinh Ivy", "Dinh Chloe"], "Dinh Ivy": [], "Dinh_Hoang_Viet__Nguyen_Hang_1_2": [], "Dinh_Ivy_1_2": [], "Dinh Kim Truc Khanh Linh": [], "Dinh_Kim_Truc_Khanh_Linh_1_2": [], "Dinh Nhat & Pham Gau": [], "Dinh_Nhat__Pham_Gau_1_2": [], "Fair Allie": [], "Fair_Allie_1_2": [], "Fair Ethan": [], "Fair_Ethan_1_2": [], "Jones Knox": [], "Jones_Knox_1_2": [], "/Jordan Rasphoumy Lily & Jordan Dalton Jessie": [], "Jordan_Rasphoumy_Lily__Jordan_Dalton_Jessie_1_2": [], "Le Julia": [], "Le_Julia_1_2": [], "Le Kevin": [], "Le_Kevin_1_2": [], "Leung Dexter": [], "Leung_Dexter_1_2": [], "Leung Serena": [], "Leung_Serena_1_2": [], "Ly/Wilson Ngoc AnhThu (Mo) & Wilson William": ["Wilson Ayame", "Wilson AnhThu-William 2"], "Wilson Ayame": [], "Wilson AnhThu-William 2": [], "LyWilson_Ngoc_AnhThu_Mo__Wilson_William_1_2": [], "Ly Chau Khoa (Bich To)": ["Dinh Gia Bao Anh", "Dinh Gia Bao Tran"], "Ly_Chau_Khoa_Bich_To_1_2": [], "Ly Hoang Yen (Chiuly, Chilly)": [], "Ly_Hoang_Yen_Chiuly_Chilly_1_2": [], "Ly Thuy Linh (Bich Ly)": [], "Ly_Thuy_Linh_Bich_Ly_1_2": [], "Nguyen/DiNardo Ngoc Amy & DiNardo Robert Anthony": ["DiNardo Anh Ly"], "NguyenDiNardo_Ngoc_Amy__DiNardo_Robert_Anthony_1_2": [], "Nguyen/Fair Vy & Fair Chris": ["Fair Ethan", "Fair Allie"], "NguyenFair_Vy__Fair_Chris_1_2": [], "Nguyen/Jones Phu & Jones Kyle": ["Jones Knox"], "NguyenJones_Phu__Jones_Kyle_1_2": [], "Nguyen/Quach Duyen & Quach Tuong": ["Quach/Leung Carmen & Leung Simon", "Quach Carline & Jeffrey", "Quach Camilla"], "Quach/Leung Carmen & Leung Simon": ["Leung Dexter", "Leung Serena"], "Quach Carline & Jeffrey": [], "Quach Camilla": [], "NguyenQuach_Duyen__Quach_Tuong_1_2": [], "Nguyen/Rowden Josephy & Rowden Jesse": [], "NguyenRowden_Josephy__Rowden_Jesse_1_2": [], "Nguyen/Tsurumoto Thuy Kristina & Tsurumoto K-husband": ["Tsurumoto Otto", "Tsurumoto Rocky"], "Tsurumoto Otto": [], "Tsurumoto Rocky": [], "NguyenTsurumoto_Thuy_Kristina__Tsurumoto_K-husband_1_2": [], "Nguyen Bich": [], "Nguyen_Bich_1_2": [], "Nguyen Billy": [], "Nguyen_Billy_1_2": [], "Nguyen Dax": [], "Nguyen_Dax_1_2": [], "Nguyen Hanh & Nguyen Tang": ["Nguyen/Fair Vy & Fair Chris", "Nguyen Khanh (Bim) & /Nguyen Kimberly", "Nguyen/Jones Phu & Jones Kyle", "Nguyen Johnny & Gordiyenko/ Natalia"], "Nguyen Khanh (Bim) & /Nguyen Kimberly": ["Nguyen Mai Kayla", "Nguyen Sloan", "Nguyen Dax"], "Nguyen Johnny & Gordiyenko/ Natalia": [], "Nguyen_Hanh__Nguyen_Tang_1_2": [], "Nguyen Hau & Pham Chinh": ["Pham/Nguyen Kim & Nguyen Trung", "Pham Phuong & Mai", "Pham Binh & /Pham Sou", "Pham Huy", "Pham Ngoc James & Stevens/Pham Sedalia", "Pham Brian & /Pham"], "Pham/Nguyen Kim & Nguyen Trung": ["Nguyen/Tsurumoto Thuy Kristina & Tsurumoto K-husband", "Nguyen Thuy Anh Katelynn", "Nguyen/Rowden Josephy & Rowden Jesse", "Nguyen Jason"], "Pham Phuong & Mai": ["Pham Jade", "Pham Jewel"], "Pham Binh & /Pham Sou": ["Pham Sheila", "Pham Xander", "Pham Binh-Sou 3", "Pham Binh-Sou 4", "Pham Binh-Sou 5", "Pham Ellie"], "Pham Huy": ["Pham Huy 1", "Pham Huy 2"], "Pham Ngoc James & Stevens/Pham Sedalia": ["Pham James-Sedalia 1"], "Pham Brian & /Pham": [], "Nguyen_Hau__Pham_Chinh_1_2": [], "Nguyen Hoang & Changkachith Thit": ["/Jordan Rasphoumy Lily & Jordan Dalton Jessie"], "Nguyen_Hoang__Changkachith_Thit_1_2": [], "Nguyen Huu Benjamin": [], "Nguyen_Huu_Benjamin_1_2": [], "Nguyen Jason": [], "Nguyen_Jason_1_2": [], "Nguyen_Johnny__Gordiyenko_Natalia_1_2": [], "Nguyen Mai Kayla": [], "Nguyen Sloan": [], "Nguyen_Khanh_Bim__Nguyen_Kimberly_1_2": [], "Nguyen Khuong & Le Quynh & Tai Cathy": ["Nguyen Max", "Nguyen Tiffany"], "Nguyen Max": [], "Nguyen Tiffany": [], "Nguyen_Khuong__Le_Quynh__Tai_Cathy_1_2": [], "Nguyen_Mai_Kayla_1_2": [], "Nguyen_Max_1_2": [], "Nguyen Ngoc Anh & Nguyen Huu Cong": ["Nguyen Huu Benjamin", "Nguyen/DiNardo Ngoc Amy & DiNardo Robert Anthony"], "Nguyen_Ngoc_Anh__Nguyen_Huu_Cong_1_2": [], "Nguyen_Sloan_1_2": [], "Nguyen Thi Kim Oanh & Dinh Phan My": ["Dinh Hoang Viet & Nguyen Hang", "Dinh Nhat & Pham Gau", "Dinh Kim Truc Khanh Linh"], "Nguyen_Thi_Kim_Oanh__Dinh_Phan_My_1_2": [], "Nguyen Thi NgocLan & Ly Van That": ["Ly Chau Khoa (Bich To)", "Ly Thuy Linh (Bich Ly)", "Ly/Wilson Ngoc AnhThu (Mo) & Wilson William", "Ly Hoang Yen (Chiuly, Chilly)"], "Nguyen_Thi_NgocLan__Ly_Van_That_1_2": [], "Nguyen Thuy Anh Katelynn": [], "Nguyen_Thuy_Anh_Katelynn_1_2": [], "Nguyen Thuy Diep & Nguyen Muoi Hai": ["Nguyen Khuong & Le Quynh & Tai Cathy", "Nguyen Tracy (C)", "Nguyen Billy"], "Nguyen Tracy (C)": [], "Nguyen_Thuy_Diep__Nguyen_Muoi_Hai_1_2": [], "Nguyen_Tiffany_1_2": [], "Nguyen_Tracy_C_1_2": [], "Nguyen Tuyet & Le Dat": ["Le Kevin", "Le Julia"], "Nguyen_Tuyet__Le_Dat_1_2": [], "Nguyen Van Vinh & Vu Thi Hien": ["Nguyen Hau & Pham Chinh", "Nguyen Hanh & Nguyen Tang", "Nguyen Thi NgocLan & Ly Van That", "Nguyen Thuy Diep & Nguyen Muoi Hai", "Nguyen/Quach Duyen & Quach Tuong", "Nguyen Thi Kim Oanh & Dinh Phan My", "Nguyen Hoang & Changkachith Thit", "Nguyen Ngoc Anh & Nguyen Huu Cong", "Nguyen Tuyet & Le Dat", "Nguyen Bich"], "Nguyen_Van_Vinh__Vu_Thi_Hien_1_2": [], "PhamNguyen_Kim__Nguyen_Trung_1_2": [], "Pham Binh-Sou 3": [], "Pham_Binh-Sou_3_1_2": [], "Pham Binh-Sou 4": [], "Pham_Binh-Sou_4_1_2": [], "Pham Sheila": [], "Pham Xander": [], "Pham Binh-Sou 5": [], "Pham Ellie": [], "Pham_Binh__Pham_Sou_1_2": [], "Pham_Brian__Pham_1_2": [], "Pham_Ellie_1_2": [], "Pham Huy 1": [], "Pham Huy 2": [], "Pham_Huy_1_1_2": [], "Pham_Huy_1_2": [], "Pham_Huy_2_1_2": [], "Pham Jade": [], "Pham_Jade_1_2": [], "Pham James-Sedalia 1": [], "Pham_James-Sedalia_1_1_2": [], "Pham Jewel": [], "Pham_Jewel_1_2": [], "Pham_Ngoc_James__StevensPham_Sedalia_1_2": [], "Pham_Phuong__Mai_1_2": [], "Pham_Sheila_1_2": [], "Pham_Xander_1_2": [], "Pham__Binh-Sou_5_1_2": [], "QuachLeung_Carmen__Leung_Simon_1_2": [], "Quach_Camilla_1_2": [], "Quach_Carline__Jeffrey_1_2": [], "Family Tree Graph Server": [], "Tsurumoto_Otto_1_2": [], "Tsurumoto_Rocky_1_2": [], "Wilson_AnhThu-William_2_1_2": [], "Wilson_Ayame_1_2": []};
+    let graphEtag = null;
+
+    const nodes = new vis.DataSet();
+    const edges = new vis.DataSet();
+    const detailsEl = document.getElementById("details");
+    const splitterEl = document.getElementById("splitter");
+
+    const network = new vis.Network(
+      document.getElementById("net"),
+      { nodes, edges },
+      {
+        layout: {
+          improvedLayout: false
+        },
+        physics: false,
+        interaction: {
+          hover: false,
+          dragNodes: true,
+          dragView: true,
+          zoomView: true,
+          navigationButtons: true,
+          keyboard: false
+        },
+        nodes: {
+          shape: "dot",
+          size: 18,
+          borderWidth: 2,
+          borderWidthSelected: 4,
+          widthConstraint: {
+            maximum: 190
+          },
+          margin: {
+            top: 10,
+            right: 10,
+            bottom: 10,
+            left: 10
+          },
+          color: {
+            border: "#666666",
+            background: "#ffffff",
+            highlight: {
+              border: "#f59e0b",
+              background: "#fff7ed"
+            },
+            hover: {
+              border: "#f59e0b",
+              background: "#fff7ed"
+            }
+          },
+          font: {
+            size: 18,
+            multi: false
+          }
+        },
+        edges: {
+          arrows: {
+            to: { enabled: true }
+          },
+          color: {
+            color: "#848484",
+            highlight: "#848484",
+            hover: "#848484",
+            inherit: false
+          },
+          smooth: {
+            enabled: true,
+            type: "cubicBezier",
+            roundness: 0.2
+          },
+          font: {
+            size: 12,
+            align: "middle"
+          }
+        }
+      }
+    );
+
+    const nodeMap = new Map(nodesData.map(n => [n.id, n]));
+    const hidden = new Set();
+    const expandedNodes = new Set();
+    let pointerMovedDuringDrag = false;
+    let currentRoot = ORIGINAL_ROOT;
+    let selectedNodeId = ORIGINAL_ROOT;
+    let currentLevels = {};
+    let activeNodeIds = new Set();
+    const createChildDialogEl = document.getElementById("createChildDialog");
+    const createChildFormEl = document.getElementById("createChildForm");
+    const createChildStatusEl = document.getElementById("createChildStatus");
+    const updateNodeDialogEl = document.getElementById("updateNodeDialog");
+    const updateNodeFormEl = document.getElementById("updateNodeForm");
+    const updateNodeStatusEl = document.getElementById("updateNodeStatus");
+    const deleteNodeDialogEl = document.getElementById("deleteNodeDialog");
+    const deleteNodeMessageEl = document.getElementById("deleteNodeMessage");
+
+    function setCreateChildStatus(message, kind = "error") {
+      createChildStatusEl.textContent = message || "";
+      createChildStatusEl.className = "status-box" + (message ? ` ${kind}` : "");
+    }
+
+    function setUpdateNodeStatus(message, kind = "error") {
+      updateNodeStatusEl.textContent = message || "";
+      updateNodeStatusEl.className = "status-box" + (message ? ` ${kind}` : "");
+    }
+
+    function notifyMainUi(message, kind = "success") {
+      const noticeEl = document.getElementById("appNotice");
+      if (!noticeEl) return;
+      noticeEl.hidden = !message;
+      noticeEl.textContent = message || "";
+      noticeEl.className = "app-notice" + (message ? ` visible${kind === "error" ? " error" : ""}` : "");
+    }
+
+    function openOverlay(el) {
+      el.classList.add("open");
+    }
+
+    function closeOverlay(el) {
+      el.classList.remove("open");
+    }
+
+    function closeCreateChildDialog() {
+      setCreateChildStatus("");
+      closeOverlay(createChildDialogEl);
+    }
+
+    function closeUpdateNodeDialog() {
+      setUpdateNodeStatus("");
+      closeOverlay(updateNodeDialogEl);
+    }
+
+    function closeDeleteNodeDialog() {
+      closeOverlay(deleteNodeDialogEl);
+    }
+
+    function preventGraphKeyCapture(el) {
+      if (!el) return;
+      el.addEventListener("keydown", function(event) {
+        event.stopPropagation();
+      });
+      el.addEventListener("keyup", function(event) {
+        event.stopPropagation();
+      });
+      el.addEventListener("keypress", function(event) {
+        event.stopPropagation();
+      });
+    }
+
+    function installDialogFieldGuards() {
+      const guardedSelectors = [
+        "#childParentNode",
+        "#childNodeTitle",
+        "#childEdgeRelation",
+        "#childEdgeOrder",
+        "#childSourceFile",
+        "#childSummaryFile",
+        "#childSummaryContent",
+        "#updateParentNode",
+        "#updateNodeTitle",
+        "#updateEdgeRelation",
+        "#updateEdgeOrder",
+        "#updateSummaryContent"
+      ];
+
+      for (const selector of guardedSelectors) {
+        preventGraphKeyCapture(document.querySelector(selector));
+      }
+    }
+
+    function normalizeText(text) {
+      return String(text || "").replace(/\s+/g, " ").trim();
+    }
+
+    function generateUUID() {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+
+    function uniqueMarkdownFileName(desired, usedNames) {
+      let name = String(desired || "node.md").trim();
+      if (!name.toLowerCase().endsWith(".md")) {
+        name += ".md";
+      }
+      if (!usedNames.has(name.toLowerCase())) {
+        usedNames.add(name.toLowerCase());
+        return name;
+      }
+      const stem = name.slice(0, -3);
+      let suffix = 2;
+      while (usedNames.has(`${stem}_${suffix}.md`.toLowerCase())) {
+        suffix += 1;
+      }
+      name = `${stem}_${suffix}.md`;
+      usedNames.add(name.toLowerCase());
+      return name;
+    }
+
+    function usedMarkdownFileNames() {
+      const used = new Set();
+      for (const node of nodeMap.values()) {
+        if (node.source_file) used.add(String(node.source_file).toLowerCase());
+        if (node.summary_file) used.add(String(node.summary_file).toLowerCase());
+      }
+      return used;
+    }
+
+    function sanitizeMarkdownFileName(name, label) {
+      const value = String(name || "").trim();
+      if (!value) {
+        throw new Error(`${label} cannot be empty.`);
+      }
+      const base = value.split(/[/\\]/).pop();
+      if (!/^[A-Za-z0-9._-]+$/.test(base)) {
+        throw new Error(`${label} may only contain letters, numbers, dot, underscore, and hyphen.`);
+      }
+      if (!base.toLowerCase().endsWith(".md")) {
+        throw new Error(`${label} must end with .md.`);
+      }
+      if (base === "." || base === "..") {
+        throw new Error(`${label} is not a valid file name.`);
+      }
+      return base;
+    }
+
+    function assertUnusedMarkdownFileName(fileName, usedNames, label) {
+      if (usedNames.has(fileName.toLowerCase())) {
+        throw new Error(`${label} "${fileName}" is already used in graph.graphml.`);
+      }
+    }
+
+    function escapeXml(text) {
+      return String(text ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&apos;");
+    }
+
+    function buildGraphmlText() {
+      const lines = [
+        "<?xml version='1.0' encoding='utf-8'?>",
+        '<graphml xmlns="http://graphml.graphdrawing.org/xmlns">',
+        '  <key id="d0" for="node" attr.name="source_file" attr.type="string" />',
+        '  <key id="d1" for="node" attr.name="summary_file" attr.type="string" />',
+        '  <key id="d2" for="node" attr.name="summary" attr.type="string" />',
+        '  <key id="d5" for="node" attr.name="image" attr.type="string" />',
+        '  <key id="d3" for="edge" attr.name="relation" attr.type="string" />',
+        '  <key id="d4" for="edge" attr.name="order" attr.type="long" />',
+        '  <graph edgedefault="directed">'
+      ];
+
+      for (const [id, node] of nodeMap.entries()) {
+        const summary = (node.summary_lines || []).join("\n");
+        lines.push(`    <node id="${escapeXml(id)}">`);
+        lines.push(`      <data key="d0">${escapeXml(node.source_file || "")}</data>`);
+        lines.push(`      <data key="d1">${escapeXml(node.summary_file || "")}</data>`);
+        lines.push(`      <data key="d2">${escapeXml(summary)}</data>`);
+        lines.push(`      <data key="d5">${escapeXml(node.image || "")}</data>`);
+        lines.push("    </node>");
+      }
+
+      for (const edge of edgesData) {
+        const order = Number.isInteger(edge.order) ? edge.order : -1;
+        lines.push(`    <edge source="${escapeXml(edge.from)}" target="${escapeXml(edge.to)}">`);
+        lines.push(`      <data key="d3">${escapeXml(edge.relation || "")}</data>`);
+        lines.push(`      <data key="d4">${order}</data>`);
+        lines.push("    </edge>");
+      }
+
+      lines.push("  </graph>");
+      lines.push("</graphml>");
+      return lines.join("\n") + "\n";
+    }
+
+    function downloadGraphml(xml) {
+      const blob = new Blob([xml], { type: "application/xml" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "graph.graphml";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    class GraphConflictError extends Error {}
+    class GraphReloadedError extends Error {}
+
+    async function putGraphml(xml, etag) {
+      const headers = { "Content-Type": "text/plain" };
+      if (etag) headers["If-Match"] = etag;
+      const response = await fetch(new URL("graph.graphml", window.location.href), {
+        method: "PUT",
+        headers,
+        body: xml
+      });
+      if (response.status === 409) {
+        graphEtag = response.headers.get("ETag") || graphEtag;
+        throw new GraphConflictError("graph.graphml changed since you loaded it.");
+      }
+      if (!response.ok) {
+        throw new Error(`Server refused the save (HTTP ${response.status}).`);
+      }
+      graphEtag = response.headers.get("ETag") || graphEtag;
+      return "saved";
+    }
+
+    async function persistGraphml() {
+      const xml = buildGraphmlText();
+      try {
+        return await putGraphml(xml, graphEtag);
+      } catch (error) {
+        if (error instanceof GraphConflictError) {
+          const choice = await askConflictResolution();
+          if (choice === "overwrite") {
+            return await putGraphml(xml, "*");
+          }
+          await reloadGraphml();
+          throw new GraphReloadedError(
+            "Someone else changed the graph, so your edit was not saved. Their version is now loaded."
+          );
+        }
+        if (error instanceof GraphReloadedError) throw error;
+        // file:// pages and static servers cannot overwrite graph.graphml in place
+      }
+      downloadGraphml(xml);
+      return "downloaded";
+    }
+
+    function askConflictResolution() {
+      const dialogEl = document.getElementById("conflictDialog");
+      const reloadButton = document.getElementById("conflictReloadButton");
+      const overwriteButton = document.getElementById("conflictOverwriteButton");
+      openOverlay(dialogEl);
+
+      return new Promise(resolve => {
+        function finish(choice) {
+          reloadButton.removeEventListener("click", onReload);
+          overwriteButton.removeEventListener("click", onOverwrite);
+          closeOverlay(dialogEl);
+          resolve(choice);
+        }
+        function onReload() { finish("reload"); }
+        function onOverwrite() { finish("overwrite"); }
+        reloadButton.addEventListener("click", onReload);
+        overwriteButton.addEventListener("click", onOverwrite);
+      });
+    }
+
+    async function reloadGraphml() {
+      const success = await loadGraphmlOnStartup();
+      if (success) {
+        initFromLoadedGraphml();
+      }
+      return success;
+    }
+
+    function initFromLoadedGraphml() {
+      // Prefer the original root if it exists and is still a root (in_degree === 0),
+      // otherwise fall back to the first node with no incoming edges.
+      let foundRoot = null;
+      if (nodeMap.has(ORIGINAL_ROOT) && nodeMap.get(ORIGINAL_ROOT).in_degree === 0) {
+        foundRoot = ORIGINAL_ROOT;
+      } else {
+        for (const [id, node] of nodeMap.entries()) {
+          if (node.in_degree === 0) {
+            foundRoot = id;
+            break;
+          }
+        }
+      }
+      initFromRoot(foundRoot || ORIGINAL_ROOT);
+    }
+
+    function recomputeLevels() {
+      // BFS to compute levels from root
+      const visited = new Set();
+      const queue = [];
+      
+      // Find root (node with in_degree 0)
+      for (const [id, node] of nodeMap.entries()) {
+        if (node.in_degree === 0) {
+          queue.push(id);
+          currentLevels[id] = 0;
+          visited.add(id);
+          break;
+        }
+      }
+      
+      while (queue.length > 0) {
+        const current = queue.shift();
+        const currentLevel = currentLevels[current] || 0;
+        
+        const childIds = children[current] || [];
+        childIds.forEach(childId => {
+          if (!visited.has(childId)) {
+            currentLevels[childId] = currentLevel + 1;
+            visited.add(childId);
+            queue.push(childId);
+          }
+        });
+      }
+      
+      // Update node levels
+      for (const [id, node] of nodeMap.entries()) {
+        node.level = currentLevels[id] || 0;
+      }
+    }
+
+    async function loadGraphmlOnStartup() {
+      try {
+        const response = await fetch(new URL("graph.graphml", window.location.href), {
+          cache: "no-store"
+        });
+        if (!response.ok) return false;
+        graphEtag = response.headers.get("ETag");
+        const xml = await response.text();
+        
+        // Parse the GraphML and update the graph data
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xml, "application/xml");
+        
+        // Clear current data
+        nodeMap.clear();
+        edgesData.length = 0;
+        Object.keys(children).forEach(key => delete children[key]);
+        Object.keys(currentLevels).forEach(key => delete currentLevels[key]);
+        activeNodeIds.clear();
+        expandedNodes.clear();
+        
+        // Parse nodes
+        const nodes = doc.querySelectorAll("node");
+        nodes.forEach(node => {
+          const id = node.getAttribute("id");
+          const sourceFile = node.querySelector('data[key="d0"]')?.textContent || "";
+          const summaryFile = node.querySelector('data[key="d1"]')?.textContent || "";
+          const summary = node.querySelector('data[key="d2"]')?.textContent || "";
+          const image = node.querySelector('data[key="d5"]')?.textContent || "";
+          
+          nodeMap.set(id, {
+            id: id,
+            label: id.length <= 24 ? id : id.slice(0, 23).trimEnd() + "…",
+            full_label: id,
+            short_label: id.length <= 24 ? id : id.slice(0, 23).trimEnd() + "…",
+            title: id,
+            level: 0,
+            source_file: sourceFile,
+            source_path: "",
+            summary_file: summaryFile,
+            summary_lines: summary.split("\n"),
+            image: image,
+            in_degree: 0,
+            out_degree: 0,
+            x: 0,
+            y: 0
+          });
+        });
+        
+        // Parse edges
+        const edges = doc.querySelectorAll("edge");
+        edges.forEach(edge => {
+          const from = edge.getAttribute("source");
+          const to = edge.getAttribute("target");
+          const relation = edge.querySelector('data[key="d3"]')?.textContent || "";
+          const order = parseInt(edge.querySelector('data[key="d4"]')?.textContent || "-1");
+          
+          if (!children[from]) children[from] = [];
+          children[from].push(to);
+          
+          edgesData.push({
+            id: `${from}->${to}`,
+            from: from,
+            to: to,
+            relation: relation,
+            order: order,
+            label: `${relation} [${order}]`,
+            full_label: `${relation} [${order}]`,
+            title: `${from} → ${to}<br>relation: ${relation}<br>order: ${order}`,
+            base_color: "#848484",
+            incoming_color: "#2563eb",
+            outgoing_color: "#dc2626"
+          });
+          
+          // Update degrees
+          if (nodeMap.has(to)) {
+            nodeMap.get(to).in_degree++;
+          }
+          if (nodeMap.has(from)) {
+            nodeMap.get(from).out_degree++;
+          }
+        });
+        
+        // Recompute levels
+        recomputeLevels();
+        
+        return true;
+      } catch (error) {
+        console.log("Could not load graph.graphml on startup, using embedded data:", error.message);
+        return false;
+      }
+    }
+
+    function removeInsertedChildState(parentId, childId, edgeId) {
+      nodeMap.delete(childId);
+      children[parentId] = (children[parentId] || []).filter(id => id !== childId);
+      edges.remove(edgeId);
+      const edgeIndex = edgesData.findIndex(item => item.id === edgeId);
+      if (edgeIndex !== -1) {
+        edgesData.splice(edgeIndex, 1);
+      }
+      delete currentLevels[childId];
+      activeNodeIds.delete(childId);
+      expandedNodes.delete(childId);
+      renumberOutgoingEdges(parentId);
+      updateParentDegrees(parentId);
+    }
+
+    function renumberOutgoingEdges(parentId) {
+      const ordered = (children[parentId] || []).slice();
+      ordered.forEach((childId, index) => {
+        const edgeId = `${parentId}->${childId}`;
+        const edge = edges.get(edgeId);
+        if (!edge) return;
+        const relation = edge.relation || edge.label || "";
+        edges.update({
+          id: edgeId,
+          order: index + 1,
+          label: `${relation} [${index + 1}]`,
+          full_label: `${relation} [${index + 1}]`,
+          title: `${parentId} → ${childId}<br>relation: ${relation}<br>order: ${index + 1}`
+        });
+      });
+
+      for (let i = 0; i < edgesData.length; i++) {
+        const edge = edgesData[i];
+        if (edge.from !== parentId) continue;
+        const newOrder = ordered.indexOf(edge.to);
+        if (newOrder === -1) continue;
+        edge.order = newOrder + 1;
+        edge.label = `${edge.relation} [${edge.order}]`;
+        edge.full_label = edge.label;
+        edge.title = `${parentId} → ${edge.to}<br>relation: ${edge.relation}<br>order: ${edge.order}`;
+      }
+    }
+
+    function insertChildAtOrder(parentId, childId, requestedOrder) {
+      const siblings = (children[parentId] || []).slice();
+      const boundedOrder = Math.max(1, Math.min(requestedOrder, siblings.length + 1));
+      siblings.splice(boundedOrder - 1, 0, childId);
+      children[parentId] = siblings;
+      renumberOutgoingEdges(parentId);
+      return boundedOrder;
+    }
+
+    function updateParentDegrees(parentId) {
+      const node = nodeMap.get(parentId);
+      if (!node) return;
+      node.out_degree = (children[parentId] || []).length;
+      nodes.update({ id: parentId, out_degree: node.out_degree });
+    }
+
+    function openCreateChildDialog() {
+      if (!selectedNodeId || !nodeMap.has(selectedNodeId)) {
+        window.alert("Select a parent node first.");
+        return;
+      }
+      const parent = nodeMap.get(selectedNodeId);
+      document.getElementById("childParentNode").value = parent.full_label || parent.id;
+      document.getElementById("childNodeTitle").value = "";
+      document.getElementById("childEdgeRelation").value = "";
+      document.getElementById("childEdgeOrder").value = String((children[selectedNodeId] || []).length + 1);
+      document.getElementById("childSummaryContent").value = "";
+      setCreateChildStatus("");
+      openOverlay(createChildDialogEl);
+      setTimeout(() => {
+        const titleInput = document.getElementById("childNodeTitle");
+        if (titleInput) {
+          titleInput.focus();
+        }
+      }, 0);
+    }
+
+    async function createChildNodeFromForm(event) {
+      event.preventDefault();
+      try {
+        const parentId = selectedNodeId;
+        if (!parentId || !nodeMap.has(parentId)) {
+          throw new Error("Select a valid parent node first.");
+        }
+
+        const nodeTitle = normalizeText(document.getElementById("childNodeTitle").value);
+        const relation = normalizeText(document.getElementById("childEdgeRelation").value);
+        const requestedOrder = Number(document.getElementById("childEdgeOrder").value);
+        const summaryContent = document.getElementById("childSummaryContent").value.replace(/\r?\n/g, "\n").trim();
+        const imageFile = document.getElementById("childImage").files[0];
+
+        if (!nodeTitle) throw new Error("Child node title cannot be empty.");
+        if (!relation) throw new Error("Edge relation cannot be empty.");
+        if (!Number.isInteger(requestedOrder) || requestedOrder < 1) throw new Error("Edge order must be a positive integer.");
+        if (nodeMap.has(nodeTitle)) throw new Error("A node with this title already exists.");
+
+        // Handle image upload if present
+        let imageUrl = null;
+        if (imageFile) {
+          if (imageFile.size > 10 * 1024 * 1024) {
+            throw new Error("Image size exceeds 10MB limit.");
+          }
+          if (!["image/jpeg", "image/png"].includes(imageFile.type)) {
+            throw new Error("Only JPEG and PNG images are allowed.");
+          }
+          
+          const formData = new FormData();
+          formData.append("file", imageFile);
+          
+          try {
+            const uploadResponse = await fetch(new URL("upload-image", window.location.href), {
+              method: "POST",
+              body: formData
+            });
+            if (!uploadResponse.ok) {
+              const errorData = await uploadResponse.json();
+              throw new Error(errorData.detail || "Failed to upload image");
+            }
+            const uploadResult = await uploadResponse.json();
+            imageUrl = uploadResult.url;
+          } catch (uploadError) {
+            throw new Error(`Image upload failed: ${uploadError.message}`);
+          }
+        }
+
+        // Automatically generate unique file names using UUIDs
+        const usedNames = usedMarkdownFileNames();
+        const uuid = generateUUID();
+        const sourceFileName = uniqueMarkdownFileName(`${uuid}_1.md`, usedNames);
+        const summaryFileName = uniqueMarkdownFileName(`${uuid}_2.md`, usedNames);
+        const parentNode = nodeMap.get(parentId);
+        const childLevel = (parentNode?.level || 0) + 1;
+        const childShortLabel = nodeTitle.length <= 24 ? nodeTitle : nodeTitle.slice(0, 23).trimEnd() + "…";
+        const newNode = {
+          id: nodeTitle,
+          label: childShortLabel,
+          full_label: nodeTitle,
+          short_label: childShortLabel,
+          title: nodeTitle,
+          level: childLevel,
+          source_file: sourceFileName,
+          source_path: "",
+          summary_file: summaryFileName,
+          summary_lines: summaryContent.split("\n"),
+          image: imageUrl,
+          in_degree: 1,
+          out_degree: 0,
+          x: (parentNode?.x || 0) + 260,
+          y: (parentNode?.y || 0) + 170
+        };
+
+        nodeMap.set(nodeTitle, newNode);
+        const actualOrder = insertChildAtOrder(parentId, nodeTitle, requestedOrder);
+        const newEdge = {
+          id: `${parentId}->${nodeTitle}`,
+          from: parentId,
+          to: nodeTitle,
+          relation: relation,
+          order: actualOrder,
+          label: `${relation} [${actualOrder}]`,
+          full_label: `${relation} [${actualOrder}]`,
+          title: `${parentId} → ${nodeTitle}<br>relation: ${relation}<br>order: ${actualOrder}`,
+          base_color: "#848484",
+          incoming_color: "#2563eb",
+          outgoing_color: "#dc2626"
+        };
+        edgesData.push(newEdge);
+        edges.add(newEdge);
+        renumberOutgoingEdges(parentId);
+        updateParentDegrees(parentId);
+
+        try {
+          const persistMode = await persistGraphml();
+          
+          activeNodeIds.add(nodeTitle);
+          currentLevels[nodeTitle] = childLevel;
+          expandedNodes.add(parentId);
+
+          updateVisibleNodes();
+          syncEdges();
+          selectedNodeId = nodeTitle;
+          renderDetails(nodeTitle);
+          relayout(true);
+          closeOverlay(createChildDialogEl);
+          notifyMainUi(
+            persistMode === "saved"
+              ? `Added ${nodeTitle} and updated graph.graphml.`
+              : `Added ${nodeTitle}. Downloaded updated graph.graphml.`
+          );
+        } catch (error) {
+          // After a conflict reload the in-memory graph is already the server's
+          // version, so there is nothing local left to roll back.
+          if (!(error instanceof GraphReloadedError)) {
+            removeInsertedChildState(parentId, nodeTitle, newEdge.id);
+          }
+          throw error;
+        }
+      } catch (error) {
+        if (error instanceof GraphReloadedError) {
+          closeOverlay(createChildDialogEl);
+          notifyMainUi(error.message, "error");
+          return;
+        }
+        setCreateChildStatus(error.message || String(error), "error");
+      }
+    }
+
+    function findParentId(nodeId) {
+      let fallback = null;
+      for (const [parentId, kids] of Object.entries(children)) {
+        if (!(kids || []).includes(nodeId)) continue;
+        if (activeNodeIds.has(parentId)) return parentId;
+        if (fallback === null) fallback = parentId;
+      }
+      return fallback;
+    }
+
+    function assertNonRootSelected() {
+      if (!selectedNodeId || !nodeMap.has(selectedNodeId)) {
+        throw new Error("Select a non-root node first.");
+      }
+      if (selectedNodeId === ORIGINAL_ROOT) {
+        throw new Error("The root node cannot be updated or deleted.");
+      }
+      const parentId = findParentId(selectedNodeId);
+      if (!parentId) {
+        throw new Error("The selected node has no parent, so it cannot be updated or deleted.");
+      }
+      return parentId;
+    }
+
+    function resolveSiblingOrder(rawValue, childCount) {
+      const parsed = Number(String(rawValue ?? "").trim());
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > childCount) {
+        return childCount;
+      }
+      return parsed;
+    }
+
+    function getEdgeRecord(fromId, toId) {
+      const edgeId = `${fromId}->${toId}`;
+      return edges.get(edgeId) || edgesData.find(item => item.id === edgeId) || null;
+    }
+
+    function makeEdgeRecord(fromId, toId, relation, order) {
+      return {
+        id: `${fromId}->${toId}`,
+        from: fromId,
+        to: toId,
+        relation: relation,
+        order: order,
+        label: `${relation} [${order}]`,
+        full_label: `${relation} [${order}]`,
+        title: `${fromId} → ${toId}<br>relation: ${relation}<br>order: ${order}`,
+        base_color: "#848484",
+        incoming_color: "#2563eb",
+        outgoing_color: "#dc2626"
+      };
+    }
+
+    function removeEdgeData(edgeId) {
+      edges.remove(edgeId);
+      const index = edgesData.findIndex(item => item.id === edgeId);
+      if (index !== -1) {
+        edgesData.splice(index, 1);
+      }
+    }
+
+    function renameNodeInMemory(oldId, newId) {
+      if (oldId === newId) return;
+
+      const stored = nodeMap.get(oldId);
+      if (!stored) {
+        throw new Error(`Missing node data for ${oldId}.`);
+      }
+
+      const shortLabel = newId.length <= 24 ? newId : newId.slice(0, 23).trimEnd() + "…";
+      nodeMap.delete(oldId);
+      nodeMap.set(newId, {
+        ...stored,
+        id: newId,
+        label: shortLabel,
+        full_label: newId,
+        short_label: shortLabel,
+        title: newId
+      });
+
+      if (Object.prototype.hasOwnProperty.call(children, oldId)) {
+        children[newId] = children[oldId];
+        delete children[oldId];
+      }
+
+      for (const parentKey of Object.keys(children)) {
+        children[parentKey] = (children[parentKey] || []).map(id => (id === oldId ? newId : id));
+      }
+
+      for (const edge of edgesData) {
+        if (edge.from !== oldId && edge.to !== oldId) continue;
+        if (edge.from === oldId) edge.from = newId;
+        if (edge.to === oldId) edge.to = newId;
+        edge.id = `${edge.from}->${edge.to}`;
+        const order = edge.order;
+        const relation = edge.relation || "";
+        edge.label = order && order !== -1 ? `${relation} [${order}]` : relation;
+        edge.full_label = edge.label;
+        edge.title = `${edge.from} → ${edge.to}<br>relation: ${relation}` + (order && order !== -1 ? `<br>order: ${order}` : "");
+      }
+
+      if (nodes.get(oldId)) {
+        nodes.remove(oldId);
+        nodes.add(nodeMap.get(newId));
+      }
+
+      if (selectedNodeId === oldId) selectedNodeId = newId;
+      if (currentRoot === oldId) currentRoot = newId;
+      if (ORIGINAL_ROOT === oldId) ORIGINAL_ROOT = newId;
+      if (expandedNodes.has(oldId)) {
+        expandedNodes.delete(oldId);
+        expandedNodes.add(newId);
+      }
+      if (activeNodeIds.has(oldId)) {
+        activeNodeIds.delete(oldId);
+        activeNodeIds.add(newId);
+      }
+      if (Object.prototype.hasOwnProperty.call(currentLevels, oldId)) {
+        currentLevels[newId] = currentLevels[oldId];
+        delete currentLevels[oldId];
+      }
+      if (hidden.has(oldId)) {
+        hidden.delete(oldId);
+        hidden.add(newId);
+      }
+    }
+
+    function applyUpdatedNodeInMemory(parentId, oldId, newId, relation, order, summaryLines, imageUrl = null) {
+      renameNodeInMemory(oldId, newId);
+
+      if (parentId) {
+        const siblings = (children[parentId] || []).filter(id => id !== newId);
+        const boundedOrder = Math.max(1, Math.min(order, siblings.length + 1));
+        siblings.splice(boundedOrder - 1, 0, newId);
+        children[parentId] = siblings;
+
+        const edge = edgesData.find(item => item.from === parentId && item.to === newId);
+        if (edge) {
+          edge.relation = relation;
+        } else {
+          edgesData.push(makeEdgeRecord(parentId, newId, relation, boundedOrder));
+        }
+
+        renumberOutgoingEdges(parentId);
+      }
+
+      const stored = nodeMap.get(newId);
+      if (stored) {
+        stored.summary_lines = summaryLines;
+        if (imageUrl !== null) {
+          stored.image = imageUrl;
+        }
+      }
+    }
+
+    function applyDeletedNodeInMemory(parentId, deletedId) {
+      const parentKids = (children[parentId] || []).filter(id => id !== deletedId);
+      const formerChildren = (children[deletedId] || []).slice();
+      const promoted = formerChildren.filter(id => id !== parentId && !parentKids.includes(id));
+
+      removeEdgeData(`${parentId}->${deletedId}`);
+
+      for (const childId of formerChildren) {
+        const oldEdge = getEdgeRecord(deletedId, childId);
+        removeEdgeData(`${deletedId}->${childId}`);
+
+        if (promoted.includes(childId)) {
+          const relation = normalizeText((oldEdge && oldEdge.relation) || "related");
+          edgesData.push(makeEdgeRecord(parentId, childId, relation, 0));
+        } else {
+          const childNode = nodeMap.get(childId);
+          if (childNode) {
+            childNode.in_degree = Math.max(0, (childNode.in_degree || 1) - 1);
+            if (nodes.get(childId)) {
+              nodes.update({ id: childId, in_degree: childNode.in_degree });
+            }
+          }
+        }
+      }
+
+      children[parentId] = parentKids.concat(promoted);
+      delete children[deletedId];
+
+      nodeMap.delete(deletedId);
+      if (nodes.get(deletedId)) {
+        nodes.remove(deletedId);
+      }
+      hidden.delete(deletedId);
+      expandedNodes.delete(deletedId);
+      activeNodeIds.delete(deletedId);
+      delete currentLevels[deletedId];
+
+      renumberOutgoingEdges(parentId);
+      updateParentDegrees(parentId);
+    }
+
+    function setUpdateEdgeFieldsVisible(visible) {
+      for (const id of ["updateParentField", "updateRelationField", "updateOrderField"]) {
+        const field = document.getElementById(id);
+        if (field) {
+          field.style.display = visible ? "" : "none";
+        }
+      }
+    }
+
+    function openUpdateNodeDialog() {
+      try {
+        if (!selectedNodeId || !nodeMap.has(selectedNodeId)) {
+          throw new Error("Select a node first.");
+        }
+        const parentId = findParentId(selectedNodeId);
+        const isRootUpdate = selectedNodeId === ORIGINAL_ROOT || !parentId;
+        const node = nodeMap.get(selectedNodeId);
+        const parent = parentId ? nodeMap.get(parentId) : null;
+        const edge = parentId ? getEdgeRecord(parentId, selectedNodeId) : null;
+        const order = parentId ? (children[parentId] || []).indexOf(selectedNodeId) + 1 : 0;
+
+        document.getElementById("updateParentNode").value = parent?.full_label || parentId || "";
+        document.getElementById("updateNodeTitle").value = node?.full_label || selectedNodeId;
+        document.getElementById("updateEdgeRelation").value = edge ? normalizeText(edge.relation || "") : "";
+        document.getElementById("updateEdgeOrder").value = order > 0 ? String(order) : "";
+        document.getElementById("updateSummaryContent").value = (node?.summary_lines || []).join("\n");
+        
+        // Show current image preview if exists
+        const imagePreview = document.getElementById("currentImagePreview");
+        if (node?.image) {
+          imagePreview.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <img src="${node.image}" alt="Current image" style="max-width: 100px; max-height: 100px; border-radius: 4px; object-fit: contain;">
+              <span style="font-size: 12px; color: #666;">Current image (will be replaced if you upload a new one)</span>
+            </div>
+          `;
+        } else {
+          imagePreview.innerHTML = "";
+        }
+        
+        setUpdateEdgeFieldsVisible(!isRootUpdate);
+        setUpdateNodeStatus("");
+        notifyMainUi("");
+        openOverlay(updateNodeDialogEl);
+        setTimeout(() => {
+          const titleInput = document.getElementById("updateNodeTitle");
+          if (titleInput) {
+            titleInput.focus();
+          }
+        }, 0);
+      } catch (error) {
+        window.alert(error.message || String(error));
+      }
+    }
+
+    async function updateNodeFromForm(event) {
+      event.preventDefault();
+      try {
+        if (!selectedNodeId || !nodeMap.has(selectedNodeId)) {
+          throw new Error("Select a node first.");
+        }
+        const oldId = selectedNodeId;
+        const parentId = findParentId(oldId);
+        const isRootUpdate = oldId === ORIGINAL_ROOT || !parentId;
+
+        const nodeTitle = normalizeText(document.getElementById("updateNodeTitle").value);
+        const relation = normalizeText(document.getElementById("updateEdgeRelation").value);
+        const rawOrder = document.getElementById("updateEdgeOrder").value;
+        const summaryContent = document.getElementById("updateSummaryContent").value.replace(/\r?\n/g, "\n").trim();
+        const imageFile = document.getElementById("updateImage").files[0];
+
+        if (!nodeTitle) throw new Error("Node title cannot be empty.");
+        if (nodeTitle !== oldId && nodeMap.has(nodeTitle)) {
+          throw new Error("A node with this title already exists.");
+        }
+        if (!isRootUpdate && !relation) {
+          throw new Error("Edge relation cannot be empty.");
+        }
+
+        // Handle image upload if present
+        let imageUrl = null;
+        const currentNode = nodeMap.get(oldId);
+        const oldImageUrl = currentNode?.image || null;
+        
+        if (imageFile) {
+          if (imageFile.size > 10 * 1024 * 1024) {
+            throw new Error("Image size exceeds 10MB limit.");
+          }
+          if (!["image/jpeg", "image/png"].includes(imageFile.type)) {
+            throw new Error("Only JPEG and PNG images are allowed.");
+          }
+          
+          const formData = new FormData();
+          formData.append("file", imageFile);
+          
+          try {
+            const uploadResponse = await fetch(new URL("upload-image", window.location.href), {
+              method: "POST",
+              body: formData
+            });
+            if (!uploadResponse.ok) {
+              const errorData = await uploadResponse.json();
+              throw new Error(errorData.detail || "Failed to upload image");
+            }
+            const uploadResult = await uploadResponse.json();
+            imageUrl = uploadResult.url;
+            
+            // Delete old image if it exists and is different from the new one
+            if (oldImageUrl && oldImageUrl !== imageUrl) {
+              try {
+                await fetch(new URL("delete-image", window.location.href), {
+                  method: "DELETE",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ image_url: oldImageUrl })
+                });
+              } catch (deleteError) {
+                console.warn("Failed to delete old image:", deleteError.message);
+              }
+            }
+          } catch (uploadError) {
+            throw new Error(`Image upload failed: ${uploadError.message}`);
+          }
+        }
+
+        const childCount = parentId ? (children[parentId] || []).length : 1;
+        const actualOrder = parentId ? resolveSiblingOrder(rawOrder, childCount) : 1;
+
+        applyUpdatedNodeInMemory(
+          isRootUpdate ? null : parentId,
+          oldId,
+          nodeTitle,
+          relation,
+          actualOrder,
+          summaryContent.split("\n"),
+          imageUrl !== null ? imageUrl : oldImageUrl
+        );
+        const persistMode = await persistGraphml();
+
+        selectedNodeId = nodeTitle;
+        updateVisibleNodes();
+        syncEdges();
+        renderDetails(nodeTitle);
+        relayout(true);
+        closeUpdateNodeDialog();
+        notifyMainUi(
+          persistMode === "saved"
+            ? `Updated ${nodeTitle} and wrote graph.graphml.`
+            : `Updated ${nodeTitle}. Downloaded updated graph.graphml.`
+        );
+      } catch (error) {
+        if (error instanceof GraphReloadedError) {
+          closeUpdateNodeDialog();
+          notifyMainUi(error.message, "error");
+          return;
+        }
+        setUpdateNodeStatus(error.message || String(error), "error");
+      }
+    }
+
+    function openDeleteNodeDialog() {
+      try {
+        const parentId = assertNonRootSelected();
+        const node = nodeMap.get(selectedNodeId);
+        const parent = nodeMap.get(parentId);
+        const childCount = (children[selectedNodeId] || []).length;
+        const title = node?.full_label || selectedNodeId;
+        const parentTitle = parent?.full_label || parentId;
+        deleteNodeMessageEl.textContent = childCount
+          ? `Delete "${title}"? Its ${childCount} child node(s) will be moved under "${parentTitle}".`
+          : `Delete "${title}"? This cannot be undone from this view.`;
+        openOverlay(deleteNodeDialogEl);
+      } catch (error) {
+        window.alert(error.message || String(error));
+      }
+    }
+
+    async function confirmDeleteSelectedNode() {
+      try {
+        const parentId = assertNonRootSelected();
+        const deletedId = selectedNodeId;
+        const wasCurrentRoot = currentRoot === deletedId;
+
+        applyDeletedNodeInMemory(parentId, deletedId);
+        await persistGraphml();
+
+        closeOverlay(deleteNodeDialogEl);
+        if (wasCurrentRoot || !nodeMap.has(currentRoot)) {
+          initFromRoot(parentId);
+        } else {
+          applyLayoutForRoot(currentRoot);
+          selectedNodeId = parentId;
+          updateVisibleNodes();
+          syncEdges();
+          renderDetails(parentId);
+          relayout(true);
+        }
+      } catch (error) {
+        if (error instanceof GraphReloadedError) {
+          closeOverlay(deleteNodeDialogEl);
+          notifyMainUi(error.message, "error");
+          return;
+        }
+        window.alert(error.message || String(error));
+      }
+    }
+
+    function refreshNodeLabels() {
+      const updates = nodes.getIds().map(id => {
+        const stored = nodeMap.get(id);
+        if (!stored) return null;
+        return {
+          id,
+          label: id === selectedNodeId ? stored.full_label : stored.short_label,
+          title: stored.full_label,
+        };
+      }).filter(Boolean);
+
+      if (updates.length) {
+        nodes.update(updates);
+      }
+    }
+
+    function refreshEdgeHighlights() {
+      const updates = edges.getIds().map(id => {
+        const edge = edges.get(id);
+        if (!edge) return null;
+
+        let color = edge.base_color || "#848484";
+        let width = 1.5;
+
+        if (selectedNodeId) {
+          if (edge.from === selectedNodeId) {
+            color = edge.outgoing_color || "#dc2626";
+            width = 3;
+          } else if (edge.to === selectedNodeId) {
+            color = edge.incoming_color || "#2563eb";
+            width = 3;
+          }
+        }
+
+        return {
+          id,
+          color: {
+            color: color,
+            highlight: color,
+            hover: color,
+            inherit: false,
+          },
+          width: width,
+        };
+      }).filter(Boolean);
+
+      if (updates.length) {
+        edges.update(updates);
+      }
+    }
+
+    function spreadLevelPositions() {
+      const minGap = 230;
+      const levelGroups = {};
+
+      for (const id of nodes.getIds()) {
+        const stored = nodeMap.get(id);
+        if (!stored) continue;
+        const level = stored.level || 0;
+        if (!levelGroups[level]) {
+          levelGroups[level] = [];
+        }
+        levelGroups[level].push(stored);
+      }
+
+      for (const level of Object.keys(levelGroups)) {
+        const items = levelGroups[level].sort((a, b) => a.x - b.x);
+        if (!items.length) continue;
+
+        const originalCenter = items.reduce((acc, item) => acc + item.x, 0) / items.length;
+
+        for (let i = 1; i < items.length; i++) {
+          const prev = items[i - 1];
+          const cur = items[i];
+          if (cur.x - prev.x < minGap) {
+            cur.x = prev.x + minGap;
+          }
+        }
+
+        const adjustedCenter = items.reduce((acc, item) => acc + item.x, 0) / items.length;
+        const shift = originalCenter - adjustedCenter;
+
+        for (const item of items) {
+          item.x += shift;
+        }
+      }
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function renderInlineMarkdown(text) {
+      let html = escapeHtml(text);
+      html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+      html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
+      html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+      return html;
+    }
+
+    function leadingSpaceCount(text) {
+      const match = String(text || "").match(/^[ \t]*/);
+      if (!match) return 0;
+      return match[0].replace(/\t/g, "    ").length;
+    }
+
+    function renderMarkdown(summaryLines) {
+      const lines = summaryLines || [];
+      const out = [];
+      let inCodeBlock = false;
+      let codeLines = [];
+      let inBlockquote = false;
+      let quoteLines = [];
+      let paragraphLines = [];
+      const listStack = [];
+
+      function isTableRow(line) {
+        return /^\s*\|.*\|\s*$/.test(line);
+      }
+
+      function isTableSeparator(line) {
+        return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+      }
+
+      function splitTableRow(line) {
+        return line
+          .trim()
+          .replace(/^\|/, "")
+          .replace(/\|$/, "")
+          .split("|")
+          .map(cell => cell.trim());
+      }
+
+      function closeListsToDepth(targetDepth = 0) {
+        while (listStack.length > targetDepth) {
+          const top = listStack.pop();
+          if (top.hasOpenItem) {
+            out.push(`</li></${top.type}>`);
+          } else {
+            out.push(`</${top.type}>`);
+          }
+        }
+      }
+
+      function openListContainer(type) {
+        out.push(`<${type}>`);
+        listStack.push({ type, hasOpenItem: false });
+      }
+
+      function startListItem(type, depth) {
+        while (listStack.length > depth) {
+          const top = listStack.pop();
+          if (top.hasOpenItem) {
+            out.push(`</li></${top.type}>`);
+          } else {
+            out.push(`</${top.type}>`);
+          }
+        }
+
+        while (listStack.length < depth) {
+          openListContainer(type);
+        }
+
+        const current = listStack[listStack.length - 1];
+        if (!current || current.type !== type) {
+          if (current) {
+            if (current.hasOpenItem) {
+              out.push(`</li></${current.type}>`);
+            } else {
+              out.push(`</${current.type}>`);
+            }
+            listStack.pop();
+          }
+          openListContainer(type);
+        }
+
+        const active = listStack[listStack.length - 1];
+        if (active.hasOpenItem) {
+          out.push(`</li><li>`);
+        } else {
+          out.push(`<li>`);
+          active.hasOpenItem = true;
+        }
+      }
+
+      function flushParagraph() {
+        if (!paragraphLines.length) return;
+        const text = paragraphLines
+          .map(line => line.trim() ? line.trim() : "")
+          .join(" ")
+          .trim();
+        if (text) {
+          out.push(`<p>${renderInlineMarkdown(text)}</p>`);
+        }
+        paragraphLines = [];
+      }
+
+      function flushBlockquote() {
+        if (!inBlockquote) return;
+        const content = quoteLines.map(line => renderInlineMarkdown(line)).join("<br>");
+        out.push(`<blockquote>${content}</blockquote>`);
+        inBlockquote = false;
+        quoteLines = [];
+      }
+
+      function flushCodeBlock() {
+        if (!inCodeBlock) return;
+        out.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+        inCodeBlock = false;
+        codeLines = [];
+      }
+
+      function flushNonListBlocks() {
+        flushParagraph();
+        flushBlockquote();
+      }
+
+      for (let i = 0; i < lines.length; i++) {
+        const rawLine = lines[i];
+        const line = rawLine ?? "";
+        const trimmed = line.trim();
+
+        if (line.startsWith("```")) {
+          flushNonListBlocks();
+          closeListsToDepth(0);
+          if (inCodeBlock) {
+            flushCodeBlock();
+          } else {
+            inCodeBlock = true;
+          }
+          continue;
+        }
+
+        if (inCodeBlock) {
+          codeLines.push(line);
+          continue;
+        }
+
+        if (!trimmed) {
+          flushNonListBlocks();
+          closeListsToDepth(0);
+          continue;
+        }
+
+        if (/^\s*(?:---|\*\*\*|___)\s*$/.test(line)) {
+          flushNonListBlocks();
+          closeListsToDepth(0);
+          out.push("<hr>");
+          continue;
+        }
+
+        if (isTableRow(line) && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+          flushNonListBlocks();
+          closeListsToDepth(0);
+
+          const headers = splitTableRow(line);
+          const rows = [];
+          i += 2;
+
+          while (i < lines.length && isTableRow(lines[i])) {
+            rows.push(splitTableRow(lines[i]));
+            i++;
+          }
+          i--;
+
+          let tableHtml = "<table><thead><tr>";
+          for (const header of headers) {
+            tableHtml += `<th>${renderInlineMarkdown(header)}</th>`;
+          }
+          tableHtml += "</tr></thead><tbody>";
+
+          for (const row of rows) {
+            tableHtml += "<tr>";
+            for (let c = 0; c < headers.length; c++) {
+              const cell = row[c] ?? "";
+              tableHtml += `<td>${renderInlineMarkdown(cell)}</td>`;
+            }
+            tableHtml += "</tr>";
+          }
+
+          tableHtml += "</tbody></table>";
+          out.push(tableHtml);
+          continue;
+        }
+
+        const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+        if (headingMatch) {
+          flushNonListBlocks();
+          closeListsToDepth(0);
+          const level = headingMatch[1].length;
+          out.push(`<h${level}>${renderInlineMarkdown(headingMatch[2])}</h${level}>`);
+          continue;
+        }
+
+        const blockquoteMatch = line.match(/^>\s?(.*)$/);
+        if (blockquoteMatch) {
+          flushParagraph();
+          closeListsToDepth(0);
+          inBlockquote = true;
+          quoteLines.push(blockquoteMatch[1]);
+          continue;
+        } else {
+          flushBlockquote();
+        }
+
+        const ulMatch = line.match(/^(\s*)[-*+]\s*(.*)$/);
+        if (ulMatch) {
+          const content = ulMatch[2].trim();
+          if (!content) {
+            flushParagraph();
+            closeListsToDepth(0);
+            continue;
+          }
+          flushParagraph();
+          const indent = leadingSpaceCount(ulMatch[1]);
+          const depth = Math.floor(indent / 2) + 1;
+          startListItem("ul", depth);
+          out.push(renderInlineMarkdown(content));
+          continue;
+        }
+
+        const olMatch = line.match(/^(\s*)\d+\.\s*(.*)$/);
+        if (olMatch) {
+          const content = olMatch[2].trim();
+          if (!content) {
+            flushParagraph();
+            closeListsToDepth(0);
+            continue;
+          }
+          flushParagraph();
+          const indent = leadingSpaceCount(olMatch[1]);
+          const depth = Math.floor(indent / 2) + 1;
+          startListItem("ol", depth);
+          out.push(renderInlineMarkdown(content));
+          continue;
+        }
+
+        closeListsToDepth(0);
+        paragraphLines.push(line);
+      }
+
+      flushParagraph();
+      closeListsToDepth(0);
+      flushBlockquote();
+      flushCodeBlock();
+
+      return out.join("\n");
+    }
+
+    function renderDetails(id) {
+      const node = nodeMap.get(id);
+      if (!node) {
+        detailsEl.innerHTML = '<div class="empty">Node details unavailable.</div>';
+        return;
+      }
+
+      const fullName = node.full_label || node.label || id;
+      const summaryHtml = renderMarkdown(node.summary_lines || []);
+
+      detailsEl.innerHTML = `
+        <h2>${escapeHtml(fullName)}</h2>
+
+        <div class="panel-field">
+          <div class="section-title">Node metadata</div>
+          <div class="meta-row"><span class="meta-label">Node:</span> ${escapeHtml(fullName)}</div>
+          <div class="meta-row"><span class="meta-label">Source file:</span> ${node.source_file ? `<code>${escapeHtml(node.source_file)}</code>` : 'N/A'}</div>
+          <div class="meta-row"><span class="meta-label">Summary file:</span> ${node.summary_file ? `<code>${escapeHtml(node.summary_file)}</code>` : 'N/A'}</div>
+          <div class="meta-row"><span class="meta-label">In-degree:</span> ${node.in_degree}</div>
+          <div class="meta-row"><span class="meta-label">Out-degree:</span> ${node.out_degree}</div>
+          <div class="meta-row"><span class="meta-label">Level:</span> ${node.level}</div>
+          ${node.image ? `<div class="meta-row"><span class="meta-label">Image:</span> <img src="${escapeHtml(node.image)}" alt="Node image" class="node-image"></div>` : ''}
+        </div>
+
+        <div class="panel-field">
+          <div class="section-title">Summary content</div>
+          ${summaryHtml ? `<div class="summary-markdown">${summaryHtml}</div>` : '<div class="empty">No summary available for this node.</div>'}
+        </div>
+      `;
+    }
+
+    function subtreeNodesOf(id) {
+      const result = [id];
+      const stack = [id];
+      const seen = new Set([id]);
+
+      while (stack.length) {
+        const cur = stack.pop();
+        for (const child of (children[cur] || [])) {
+          if (seen.has(child)) continue;
+          seen.add(child);
+          result.push(child);
+          stack.push(child);
+        }
+      }
+
+      return result;
+    }
+
+    function visibleChildrenOf(id) {
+      return (children[id] || []).filter(child => activeNodeIds.has(child) && nodes.get(child));
+    }
+
+    function buildVisibleSubtreeInfo(rootId) {
+      const subtreeWidth = {};
+      const visibleSet = new Set(nodes.getIds());
+
+      function visit(nodeId) {
+        if (!visibleSet.has(nodeId)) {
+          return 0;
+        }
+
+        const visibleKids = visibleChildrenOf(nodeId);
+        if (!visibleKids.length) {
+          subtreeWidth[nodeId] = 1;
+          return 1;
+        }
+
+        let total = 0;
+        for (const child of visibleKids) {
+          total += visit(child);
+        }
+        subtreeWidth[nodeId] = Math.max(1, total);
+        return subtreeWidth[nodeId];
+      }
+
+      visit(rootId);
+      return { subtreeWidth, visibleSet };
+    }
+
+    function computeVisibleLayout(rootId) {
+      const { subtreeWidth, visibleSet } = buildVisibleSubtreeInfo(rootId);
+      const positions = {};
+      const xSpacing = 260;
+      const ySpacing = 170;
+
+      function place(nodeId, centerX) {
+        if (!visibleSet.has(nodeId)) return;
+
+        positions[nodeId] = {
+          x: centerX,
+          y: (currentLevels[nodeId] || 0) * ySpacing,
+        };
+
+        const kids = visibleChildrenOf(nodeId);
+        if (!kids.length) {
+          return;
+        }
+
+        const totalWidthUnits = kids.reduce((acc, child) => acc + (subtreeWidth[child] || 1), 0);
+        let leftEdge = centerX - ((totalWidthUnits - 1) * xSpacing) / 2;
+
+        for (const child of kids) {
+          const childUnits = subtreeWidth[child] || 1;
+          const childCenterX = leftEdge + ((childUnits - 1) * xSpacing) / 2;
+          place(child, childCenterX);
+          leftEdge += childUnits * xSpacing;
+        }
+      }
+
+      place(rootId, 0);
+
+      const visibleNodes = Array.from(visibleSet);
+      for (const nodeId of visibleNodes) {
+        const stored = nodeMap.get(nodeId);
+        const pos = positions[nodeId];
+        if (!stored || !pos) continue;
+        stored.x = pos.x;
+        stored.y = pos.y;
+        stored.level = currentLevels[nodeId] || 0;
+      }
+    }
+
+    function reorganizeVisibleGraph(shouldFit = false) {
+      computeVisibleLayout(currentRoot);
+      spreadLevelPositions();
+
+      const updates = nodes.getIds().map(id => {
+        const stored = nodeMap.get(id);
+        if (!stored) return null;
+        return {
+          id,
+          x: stored.x,
+          y: stored.y,
+          level: stored.level,
+          label: id === selectedNodeId ? stored.full_label : stored.short_label,
+          title: stored.full_label,
+        };
+      }).filter(Boolean);
+
+      if (updates.length) {
+        nodes.update(updates);
+      }
+
+      refreshEdgeHighlights();
+      network.setData({ nodes: nodes, edges: edges });
+
+      if (selectedNodeId && nodes.get(selectedNodeId)) {
+        network.selectNodes([selectedNodeId]);
+      } else {
+        network.unselectAll();
+      }
+
+      if (shouldFit) {
+        setTimeout(() => {
+          network.fit({
+            animation: {
+              duration: 250,
+              easingFunction: "easeInOutQuad"
+            }
+          });
+        }, 30);
+      }
+    }
+
+    function computeLevelsForRoot(rootId) {
+      const levels = { [rootId]: 0 };
+      const queue = [rootId];
+
+      while (queue.length) {
+        const nodeId = queue.shift();
+        for (const child of (children[nodeId] || [])) {
+          if (!(child in levels)) {
+            levels[child] = levels[nodeId] + 1;
+            queue.push(child);
+          }
+        }
+      }
+
+      return levels;
+    }
+
+    function applyLayoutForRoot(rootId) {
+      currentLevels = computeLevelsForRoot(rootId);
+      activeNodeIds = new Set(subtreeNodesOf(rootId));
+
+      for (const nodeId of activeNodeIds) {
+        const stored = nodeMap.get(nodeId);
+        if (stored) {
+          stored.level = currentLevels[nodeId] || 0;
+          stored.x = 0;
+          stored.y = stored.level * 170;
+        }
+      }
+    }
+
+    function syncEdges() {
+      const visible = new Set(nodes.getIds());
+      const wanted = edgesData.filter(
+        e => activeNodeIds.has(e.from) && activeNodeIds.has(e.to) && visible.has(e.from) && visible.has(e.to)
+      );
+      const wantedIds = new Set(wanted.map(e => e.id));
+
+      for (const id of edges.getIds()) {
+        if (!wantedIds.has(id)) {
+          edges.remove(id);
+        }
+      }
+
+      for (const e of wanted) {
+        if (!edges.get(e.id)) {
+          edges.add(e);
+        }
+      }
+
+      refreshEdgeHighlights();
+    }
+
+    function relayout(shouldFit = false) {
+      reorganizeVisibleGraph(shouldFit);
+    }
+
+    function showNode(id) {
+      if (!activeNodeIds.has(id)) {
+        return;
+      }
+      if (!nodes.get(id)) {
+        const node = nodeMap.get(id);
+        if (node) {
+          nodes.add(node);
+        }
+      }
+    }
+
+    function computeWantedVisibleNodes() {
+      const wanted = new Set();
+
+      for (const nodeId of activeNodeIds) {
+        if ((currentLevels[nodeId] || 0) <= INIT_DEPTH) {
+          wanted.add(nodeId);
+        }
+      }
+
+      wanted.add(currentRoot);
+
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const nodeId of Array.from(wanted)) {
+          if (!expandedNodes.has(nodeId)) continue;
+          for (const child of (children[nodeId] || []).filter(child => activeNodeIds.has(child))) {
+            if (!wanted.has(child)) {
+              wanted.add(child);
+              changed = true;
+            }
+          }
+        }
+      }
+
+      return wanted;
+    }
+
+    function updateVisibleNodes() {
+      const wanted = computeWantedVisibleNodes();
+
+      for (const nodeId of Array.from(nodes.getIds())) {
+        if (!wanted.has(nodeId)) {
+          nodes.remove(nodeId);
+          hidden.add(nodeId);
+        }
+      }
+
+      for (const nodeId of wanted) {
+        hidden.delete(nodeId);
+        showNode(nodeId);
+      }
+
+      return wanted;
+    }
+
+    function descendantsOf(id) {
+      const result = [];
+      const stack = [...(children[id] || [])];
+      const seen = new Set();
+
+      while (stack.length) {
+        const cur = stack.pop();
+        if (seen.has(cur) || !activeNodeIds.has(cur)) continue;
+        seen.add(cur);
+        result.push(cur);
+        for (const child of (children[cur] || [])) {
+          stack.push(child);
+        }
+      }
+
+      return result;
+    }
+
+    function hideSubtree(id) {
+      expandedNodes.delete(id);
+      updateVisibleNodes();
+      syncEdges();
+      relayout(false);
+    }
+
+    function expandOneLevel(id) {
+      expandedNodes.add(id);
+      updateVisibleNodes();
+      syncEdges();
+      relayout(false);
+    }
+
+    function toggleNode(id) {
+      const directChildren = (children[id] || []).filter(child => activeNodeIds.has(child));
+      if (!directChildren.length) return;
+
+      if (expandedNodes.has(id)) {
+        hideSubtree(id);
+      } else {
+        expandOneLevel(id);
+      }
+    }
+
+    function initFromRoot(rootId) {
+      currentRoot = rootId;
+      selectedNodeId = rootId;
+      hidden.clear();
+      expandedNodes.clear();
+      nodes.clear();
+      edges.clear();
+      applyLayoutForRoot(rootId);
+
+      updateVisibleNodes();
+      syncEdges();
+      relayout(true);
+      renderDetails(rootId);
+    }
+
+    function expandAll() {
+      hidden.clear();
+      for (const nodeId of activeNodeIds) {
+        expandedNodes.add(nodeId);
+      }
+      updateVisibleNodes();
+      syncEdges();
+      relayout(true);
+    }
+
+    function collapseAll() {
+      expandedNodes.clear();
+      selectedNodeId = currentRoot;
+      updateVisibleNodes();
+      syncEdges();
+      renderDetails(currentRoot);
+      relayout(true);
+    }
+
+    function setSelectedAsRoot() {
+      if (!selectedNodeId || !nodeMap.has(selectedNodeId)) {
+        return;
+      }
+      initFromRoot(selectedNodeId);
+    }
+
+    function restoreOriginalTree() {
+      initFromRoot(ORIGINAL_ROOT);
+    }
+
+    function fitGraph() {
+      network.fit({
+        animation: {
+          duration: 250,
+          easingFunction: "easeInOutQuad"
+        }
+      });
+    }
+
+
+    function installSplitter() {
+      let resizing = false;
+
+      splitterEl.addEventListener("mousedown", function(event) {
+        resizing = true;
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+        event.preventDefault();
+      });
+
+      window.addEventListener("mousemove", function(event) {
+        if (!resizing) return;
+        const minWidth = 220;
+        const maxWidth = Math.floor(window.innerWidth * 0.7);
+        const newWidth = window.innerWidth - event.clientX;
+        const clamped = Math.max(minWidth, Math.min(maxWidth, newWidth));
+        detailsEl.style.width = `${clamped}px`;
+        network.redraw();
+      });
+
+      window.addEventListener("mouseup", function() {
+        if (!resizing) return;
+        resizing = false;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      });
+    }
+
+    network.on("dragStart", function() {
+      pointerMovedDuringDrag = false;
+    });
+
+    network.on("dragging", function() {
+      pointerMovedDuringDrag = true;
+    });
+
+    network.on("dragEnd", function(params) {
+      if (params.nodes && params.nodes.length) {
+        for (const nodeId of params.nodes) {
+          const pos = network.getPositions([nodeId])[nodeId];
+          const stored = nodeMap.get(nodeId);
+          if (stored && pos) {
+            stored.x = pos.x;
+            stored.y = pos.y;
+          }
+        }
+        spreadLevelPositions();
+        refreshNodeLabels();
+        const updates = nodes.getIds().map(id => {
+          const stored = nodeMap.get(id);
+          if (!stored) return null;
+          return {
+            id,
+            x: stored.x,
+            y: stored.y,
+            label: id === selectedNodeId ? stored.full_label : stored.short_label,
+            title: stored.full_label,
+          };
+        }).filter(Boolean);
+        if (updates.length) {
+          nodes.update(updates);
+        }
+      }
+    });
+
+    network.on("release", function(params) {
+      const nodeId = params.pointer && params.pointer.DOM
+        ? network.getNodeAt(params.pointer.DOM)
+        : null;
+
+      if (!nodeId) {
+        if (selectedNodeId && nodes.get(selectedNodeId)) {
+          network.selectNodes([selectedNodeId]);
+          refreshEdgeHighlights();
+        }
+        pointerMovedDuringDrag = false;
+        return;
+      }
+
+      if (pointerMovedDuringDrag) {
+        if (selectedNodeId && nodes.get(selectedNodeId)) {
+          network.selectNodes([selectedNodeId]);
+          refreshEdgeHighlights();
+        }
+        pointerMovedDuringDrag = false;
+        return;
+      }
+
+      const wasSelectedBeforeClick = selectedNodeId === nodeId;
+      selectedNodeId = nodeId;
+      renderDetails(nodeId);
+
+      const shiftKey = !!(
+        params.event &&
+        (
+          (params.event.srcEvent && params.event.srcEvent.shiftKey) ||
+          params.event.shiftKey
+        )
+      );
+
+      if (!shiftKey) {
+        const directChildren = (children[nodeId] || []).filter(child => activeNodeIds.has(child));
+
+        if (directChildren.length) {
+          if (wasSelectedBeforeClick && expandedNodes.has(nodeId)) {
+            hideSubtree(nodeId);
+          } else {
+            expandOneLevel(nodeId);
+          }
+        }
+      }
+
+      relayout(false);
+      pointerMovedDuringDrag = false;
+    });
+
+    network.on("click", function(params) {
+      if (params.nodes && params.nodes.length) {
+        return;
+      }
+
+      if (selectedNodeId && nodes.get(selectedNodeId)) {
+        network.selectNodes([selectedNodeId]);
+        refreshEdgeHighlights();
+      }
+    });
+
+    network.on("deselectNode", function() {
+      if (selectedNodeId && nodes.get(selectedNodeId)) {
+        network.selectNodes([selectedNodeId]);
+        refreshEdgeHighlights();
+      }
+    });
+
+    installDialogFieldGuards();
+    createChildFormEl.addEventListener("submit", createChildNodeFromForm);
+    updateNodeFormEl.addEventListener("submit", updateNodeFromForm);
+    document.getElementById("createChildSaveButton").addEventListener("click", createChildNodeFromForm);
+    document.getElementById("updateNodeSaveButton").addEventListener("click", updateNodeFromForm);
+    document.getElementById("deleteNodeConfirmButton").addEventListener("click", confirmDeleteSelectedNode);
+    installSplitter();
+    
+    // Try to load from graph.graphml first, fall back to embedded data
+    (async () => {
+      const loadedFromFile = await loadGraphmlOnStartup();
+      if (loadedFromFile) {
+        initFromLoadedGraphml();
+      } else {
+        // Use embedded data
+        initFromRoot(ORIGINAL_ROOT);
+      }
+    })();
+  </script>
+</body>
+</html>
