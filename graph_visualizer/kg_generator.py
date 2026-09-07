@@ -746,7 +746,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     <button onclick="openCreateChildDialog()">Add child node</button>
     <button onclick="openUpdateNodeDialog()">Update node</button>
     <button class="danger" onclick="openDeleteNodeDialog()">Delete node</button>
-    <button onclick="exportCSV()">Export CSV</button>
+    <button onclick="exportZip()">Export ZIP</button>
     <span class="hint">Click a node to select it. Clicking a node that is not currently in focus expands it. Clicking the same in-focus node again collapses it. The clicked node is highlighted, incoming and outgoing edges use different colors, node labels are shortened by default, and the selected node shows its full name. The graph auto-reorganizes after each click for a clearer layout while keeping children below parents and sibling edge order left-to-right. Shift-click only shows details. Update node can change any selected node. The original root can only change title and summary. Delete applies only to a selected non-root node.</span>
   </div>
   <div id="appNotice" class="app-notice" hidden></div>
@@ -2373,7 +2373,7 @@ Write markdown here..."></textarea>
 
         <div class="panel-field">
           <div class="section-title">Detail information</div>
-          ${summaryHtml ? `<div class="summary-markdown">${summaryHtml}</div>` : '<div class="empty">No detail information available for this node.<br><br><strong>To enable CSV export, add name details:</strong><br>- **Last Name:** [last name]<br>- **Middle Name:** [middle name or leave empty]<br>- **First Name:** [first name]<br><br>For couples, add separate sections for Person 1 and Person 2.</div>'}
+          ${summaryHtml ? `<div class="summary-markdown">${summaryHtml}</div>` : '<div class="empty">No detail information available for this node.<br><br><strong>To add detail information:</strong><br>- **Last Name:** [last name]<br>- **Middle Name:** [middle name or leave empty]<br>- **First Name:** [first name]<br><br>For couples, add separate sections for Person 1 and Person 2.</div>'}
         </div>
 
         <details class="panel-field meta-panel">
@@ -2716,16 +2716,16 @@ Write markdown here..."></textarea>
       relayout(true);
     }
 
-    function exportCSV() {
-      fetch('/export.csv')
+    function exportZip() {
+      fetch('/export.zip')
         .then(response => {
-          if (response.ok && response.headers.get('content-type')?.includes('text/csv')) {
-            // Success - download the CSV file
+          if (response.ok && response.headers.get('content-type')?.includes('application/zip')) {
+            // Success - download the ZIP file
             return response.blob().then(blob => {
               const url = window.URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url;
-              a.download = 'family_tree.csv';
+              a.download = 'family_tree.zip';
               document.body.appendChild(a);
               a.click();
               window.URL.revokeObjectURL(url);
@@ -2739,7 +2739,7 @@ Write markdown here..."></textarea>
           }
         })
         .catch(error => {
-          alert('Failed to export CSV: ' + error.message);
+          alert('Failed to export ZIP: ' + error.message);
         });
     }
 
