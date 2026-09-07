@@ -138,7 +138,10 @@ def build_graph(folder: Path):
     if not md_files:
         raise FileNotFoundError(f"No .md files found in {folder}")
 
-    for md_file in md_files:
+    # Only process *_1.md files (source files), not *_2.md files (summary files)
+    source_files = [f for f in md_files if f.stem.endswith("_1")]
+
+    for md_file in source_files:
         title, summary_file, summary_lines, relationships = parse_markdown_file(md_file)
 
         if title not in graph:
@@ -230,7 +233,7 @@ def sanitize_graphml(graph: nx.DiGraph):
             clean_attrs["summary"] = str(attrs.get("summary"))
 
         for k, v in attrs.items():
-            if k in {"summary_lines", "summary", "source_path"}:
+            if k in {"summary_lines", "source_path"}:
                 continue
             if isinstance(v, (str, int, float, bool)):
                 clean_attrs[k] = v
@@ -433,6 +436,34 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       letter-spacing: 0.04em;
       color: #444;
     }
+    #details .meta-panel > summary.section-title {
+      cursor: pointer;
+      margin-bottom: 0;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #details .meta-panel > summary.section-title::-webkit-details-marker {
+      display: none;
+    }
+    #details .meta-panel > summary.section-title::before {
+      content: "\25B8";
+      font-size: 11px;
+      color: #888;
+      transition: transform 0.12s ease;
+    }
+    #details .meta-panel[open] > summary.section-title::before {
+      transform: rotate(90deg);
+    }
+    #details .meta-panel > summary.section-title:hover {
+      color: #000;
+    }
+    #details .meta-panel > .meta-body {
+      margin-top: 10px;
+    }
     #details .summary-markdown {
       line-height: 1.5;
       background: #000;
@@ -528,10 +559,14 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
       letter-spacing: 0.02em;
     }
     .node-image {
+      display: block;
       max-width: 100%;
       height: auto;
       border-radius: 4px;
       object-fit: contain;
+    }
+    #details .node-image-wrap {
+      margin: 0 0 4px 0;
     }
     #details .summary-markdown tbody tr:nth-child(even) {
       background: #0a0a0a;
@@ -711,6 +746,7 @@ def generate_html(graph: nx.DiGraph, root: str, depth: int, title: str):
     <button onclick="openCreateChildDialog()">Add child node</button>
     <button onclick="openUpdateNodeDialog()">Update node</button>
     <button class="danger" onclick="openDeleteNodeDialog()">Delete node</button>
+    <button onclick="exportCSV()">Export CSV</button>
     <span class="hint">Click a node to select it. Clicking a node that is not currently in focus expands it. Clicking the same in-focus node again collapses it. The clicked node is highlighted, incoming and outgoing edges use different colors, node labels are shortened by default, and the selected node shows its full name. The graph auto-reorganizes after each click for a clearer layout while keeping children below parents and sibling edge order left-to-right. Shift-click only shows details. Update node can change any selected node. The original root can only change title and summary. Delete applies only to a selected non-root node.</span>
   </div>
   <div id="appNotice" class="app-notice" hidden></div>
@@ -1260,16 +1296,32 @@ Write markdown here..."></textarea>
         activeNodeIds.clear();
         expandedNodes.clear();
         
+        // Map attribute names to their key ids. networkx and this page assign
+        // key ids in different orders, so never hardcode them.
+        const keyIds = { node: {}, edge: {} };
+        doc.querySelectorAll("key").forEach(key => {
+          const scope = key.getAttribute("for");
+          const name = key.getAttribute("attr.name");
+          const id = key.getAttribute("id");
+          if (keyIds[scope] && name && id) keyIds[scope][name] = id;
+        });
+
+        function dataValue(el, scope, attrName) {
+          const keyId = keyIds[scope][attrName];
+          if (!keyId) return "";
+          return el.querySelector(`data[key="${keyId}"]`)?.textContent || "";
+        }
+
         // Parse nodes
         const nodes = doc.querySelectorAll("node");
         nodes.forEach(node => {
           const id = node.getAttribute("id");
-          const sourceFile = node.querySelector('data[key="d0"]')?.textContent || "";
-          const summaryFile = node.querySelector('data[key="d1"]')?.textContent || "";
-          const summary = node.querySelector('data[key="d2"]')?.textContent || "";
-          const image = node.querySelector('data[key="d5"]')?.textContent || "";
+          const sourceFile = dataValue(node, "node", "source_file");
+          const summaryFile = dataValue(node, "node", "summary_file");
+          const summary = dataValue(node, "node", "summary");
+          const image = dataValue(node, "node", "image");
           
-          nodeMap.set(id, {
+          const nodeData = {
             id: id,
             label: id.length <= 24 ? id : id.slice(0, 23).trimEnd() + "…",
             full_label: id,
@@ -1280,12 +1332,15 @@ Write markdown here..."></textarea>
             source_path: "",
             summary_file: summaryFile,
             summary_lines: summary.split("\n"),
-            image: image,
             in_degree: 0,
             out_degree: 0,
             x: 0,
             y: 0
-          });
+          };
+          if (image) {
+            nodeData.image = image;
+          }
+          nodeMap.set(id, nodeData);
         });
         
         // Parse edges
@@ -1293,8 +1348,8 @@ Write markdown here..."></textarea>
         edges.forEach(edge => {
           const from = edge.getAttribute("source");
           const to = edge.getAttribute("target");
-          const relation = edge.querySelector('data[key="d3"]')?.textContent || "";
-          const order = parseInt(edge.querySelector('data[key="d4"]')?.textContent || "-1");
+          const relation = dataValue(edge, "edge", "relation");
+          const order = parseInt(dataValue(edge, "edge", "order") || "-1");
           
           if (!children[from]) children[from] = [];
           children[from].push(to);
@@ -1479,12 +1534,14 @@ Write markdown here..."></textarea>
           source_path: "",
           summary_file: summaryFileName,
           summary_lines: summaryContent.split("\n"),
-          image: imageUrl,
           in_degree: 1,
           out_degree: 0,
           x: (parentNode?.x || 0) + 260,
           y: (parentNode?.y || 0) + 170
         };
+        if (imageUrl !== null) {
+          newNode.image = imageUrl;
+        }
 
         nodeMap.set(nodeTitle, newNode);
         const actualOrder = insertChildAtOrder(parentId, nodeTitle, requestedOrder);
@@ -1693,6 +1750,8 @@ Write markdown here..."></textarea>
         stored.summary_lines = summaryLines;
         if (imageUrl !== null) {
           stored.image = imageUrl;
+        } else if (imageUrl === null && stored.image !== undefined) {
+          delete stored.image;
         }
       }
     }
@@ -1872,7 +1931,7 @@ Write markdown here..."></textarea>
           relation,
           actualOrder,
           summaryContent.split("\n"),
-          imageUrl !== null ? imageUrl : oldImageUrl
+          imageUrl !== null ? imageUrl : (oldImageUrl || undefined)
         );
         const persistMode = await persistGraphml();
 
@@ -2310,22 +2369,24 @@ Write markdown here..."></textarea>
 
       detailsEl.innerHTML = `
         <h2>${escapeHtml(fullName)}</h2>
+        ${node.image ? `<div class="node-image-wrap"><img src="${escapeHtml(node.image)}" alt="${escapeHtml(fullName)}" class="node-image"></div>` : ''}
 
         <div class="panel-field">
-          <div class="section-title">Node metadata</div>
-          <div class="meta-row"><span class="meta-label">Node:</span> ${escapeHtml(fullName)}</div>
-          <div class="meta-row"><span class="meta-label">Source file:</span> ${node.source_file ? `<code>${escapeHtml(node.source_file)}</code>` : 'N/A'}</div>
-          <div class="meta-row"><span class="meta-label">Summary file:</span> ${node.summary_file ? `<code>${escapeHtml(node.summary_file)}</code>` : 'N/A'}</div>
-          <div class="meta-row"><span class="meta-label">In-degree:</span> ${node.in_degree}</div>
-          <div class="meta-row"><span class="meta-label">Out-degree:</span> ${node.out_degree}</div>
-          <div class="meta-row"><span class="meta-label">Level:</span> ${node.level}</div>
-          ${node.image ? `<div class="meta-row"><span class="meta-label">Image:</span> <img src="${escapeHtml(node.image)}" alt="Node image" class="node-image"></div>` : ''}
+          <div class="section-title">Detail information</div>
+          ${summaryHtml ? `<div class="summary-markdown">${summaryHtml}</div>` : '<div class="empty">No detail information available for this node.<br><br><strong>To enable CSV export, add name details:</strong><br>- **Last Name:** [last name]<br>- **Middle Name:** [middle name or leave empty]<br>- **First Name:** [first name]<br><br>For couples, add separate sections for Person 1 and Person 2.</div>'}
         </div>
 
-        <div class="panel-field">
-          <div class="section-title">Summary content</div>
-          ${summaryHtml ? `<div class="summary-markdown">${summaryHtml}</div>` : '<div class="empty">No summary available for this node.</div>'}
-        </div>
+        <details class="panel-field meta-panel">
+          <summary class="section-title">Node metadata</summary>
+          <div class="meta-body">
+            <div class="meta-row"><span class="meta-label">Node:</span> ${escapeHtml(fullName)}</div>
+            <div class="meta-row"><span class="meta-label">Source file:</span> ${node.source_file ? `<code>${escapeHtml(node.source_file)}</code>` : 'N/A'}</div>
+            <div class="meta-row"><span class="meta-label">Summary file:</span> ${node.summary_file ? `<code>${escapeHtml(node.summary_file)}</code>` : 'N/A'}</div>
+            <div class="meta-row"><span class="meta-label">In-degree:</span> ${node.in_degree}</div>
+            <div class="meta-row"><span class="meta-label">Out-degree:</span> ${node.out_degree}</div>
+            <div class="meta-row"><span class="meta-label">Level:</span> ${node.level}</div>
+          </div>
+        </details>
       `;
     }
 
@@ -2653,6 +2714,33 @@ Write markdown here..."></textarea>
       syncEdges();
       renderDetails(currentRoot);
       relayout(true);
+    }
+
+    function exportCSV() {
+      fetch('/export.csv')
+        .then(response => {
+          if (response.ok && response.headers.get('content-type')?.includes('text/csv')) {
+            // Success - download the CSV file
+            return response.blob().then(blob => {
+              const url = window.URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = 'family_tree.csv';
+              document.body.appendChild(a);
+              a.click();
+              window.URL.revokeObjectURL(url);
+              document.body.removeChild(a);
+            });
+          } else {
+            // Error - display the error message
+            return response.text().then(errorText => {
+              alert(errorText);
+            });
+          }
+        })
+        .catch(error => {
+          alert('Failed to export CSV: ' + error.message);
+        });
     }
 
     function setSelectedAsRoot() {

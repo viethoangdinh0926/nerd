@@ -1,4 +1,4 @@
-INPUT_DIR ?= .
+INPUT_DIR ?= ./test
 
 # Output directory
 ROOT_OUTPUT_DIR ?= ./graph_output
@@ -7,7 +7,7 @@ ROOT_OUTPUT_DIR ?= ./graph_output
 SCRIPT = ../graph_visualizer/kg_generator.py
 
 # Root node name
-ROOT_NODE_NAME = "Nguyen Van Vinh & Vu Thi Hien"
+ROOT_NODE_NAME = "Nguyễn Văn Vinh & Vũ Thị Hiền"
 
 # Default target
 .PHONY: graph

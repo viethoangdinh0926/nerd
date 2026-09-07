@@ -1,4 +1,4 @@
 .venv
 graph_output
-family_tree/*.md
+family_tree/md_tree_1/*
 family_tree/*.csv
