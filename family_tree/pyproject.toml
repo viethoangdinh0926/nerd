@@ -14,6 +14,6 @@ dependencies = [
 dev = []
 
 [[tool.uv.index]]
-name = "artifactory"
-url = "https://artifacts.dell.com/artifactory/api/pypi/python/simple"
+name = "pypi"
+url = "https://pypi.org/simple"
 default = true

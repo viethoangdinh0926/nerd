@@ -1,4 +1,41 @@
 #!/usr/bin/env python3
+"""
+Family Tree CSV to Markdown Converter
+
+This script converts a family tree CSV file into markdown files for Obsidian/Logseq.
+It parses family relationships from a CSV format and generates paired markdown files
+for each person or couple in the family tree.
+
+USAGE:
+    python csv_to_md.py <csv_file> --output-dir <output_directory>
+
+EXAMPLE:
+    python csv_to_md.py family_tree.csv --output-dir ./output
+
+CSV FORMAT:
+    The CSV file should contain family tree data with the following structure:
+    - Each row represents a different generation level
+    - Names are organized in groups of 3 columns: Last Name, Middle Name, First Name
+    - Consecutive non-empty cells in the same generation represent a couple
+    - Empty cells indicate no person at that position
+    - The first row may contain metadata (numbers) and will be skipped automatically
+
+    Example CSV structure:
+    Generation 0: [Last1, Middle1, First1, Last2, Middle2, First2]
+    Generation 1: [Last3, Middle3, First3, Last4, Middle4, First4, Last5, Middle5, First5]
+    ...
+
+OUTPUT:
+    The script generates two markdown files for each person/couple:
+    - {name}_1.md: Contains relationships (parent of -> child)
+    - {name}_2.md: Contains name details (Last, Middle, First names)
+
+    Files are written to the specified output directory.
+
+REQUIREMENTS:
+    - Python 3.6+
+    - No external dependencies (uses only standard library)
+"""
 
 import csv
 import re

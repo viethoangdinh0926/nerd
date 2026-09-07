@@ -1,4 +1,4 @@
-INPUT_DIR ?= ./test
+INPUT_DIR ?= ./md_files/family_tree_1/mds
 
 # Output directory
 ROOT_OUTPUT_DIR ?= ./graph_output
