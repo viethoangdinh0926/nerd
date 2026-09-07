@@ -30,8 +30,8 @@ app.add_middleware(
     expose_headers=["ETag"],
 )
 
-# Get the graph directory
-graph_output_dir = Path(__file__).parent / "graph"
+# Get the graph_output directory
+graph_output_dir = Path(__file__).parent / "graph_output"
 if not graph_output_dir.exists():
     graph_output_dir.mkdir(parents=True, exist_ok=True)
 
